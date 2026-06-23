@@ -1,0 +1,25 @@
+name: WF-06 システム監視
+
+on:
+  repository_dispatch:
+    types: [system-error]
+  workflow_dispatch:
+    inputs:
+      error_info:
+        description: 'エラー情報'
+        required: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python scripts/system_monitor.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ERROR_INFO: ${{ github.event.client_payload.error_info || inputs.error_info }}

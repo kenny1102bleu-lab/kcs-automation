@@ -1,0 +1,27 @@
+name: WF-02 HAL投稿フロー
+
+on:
+  schedule:
+    - cron: '0 12 * * 1,3,5'  # JST 21:00 月水金
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: '投稿テーマ（空欄で自動選択）'
+        required: false
+        default: ''
+
+jobs:
+  hal_post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python scripts/hal_post.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          POST_THEME: ${{ inputs.theme }}
