@@ -36,7 +36,7 @@ def trigger_workflow(event_type: str, payload: dict) -> bool:
 
 @bot.event
 async def on_ready():
-    print(f"KCS Bot 起動: {bot.user}")
+    print(f"KCS Bot 起動: {bot.user}", flush=True)
 
 
 @bot.event
@@ -45,6 +45,7 @@ async def on_message(message: discord.Message):
         return
 
     content = message.content.strip()
+    print(f"[on_message] from={message.author} content={content!r}", flush=True)
 
     # ── 承認コマンド ──────────────────────────────
     if content.startswith("!承認"):
@@ -119,6 +120,3 @@ def register_pending(approval_id: str, post_text: str, account: str):
         await asyncio.sleep(1800)
         pending_approvals.pop(approval_id, None)
     asyncio.create_task(expire())
-
-
-bot.run(TOKEN)
