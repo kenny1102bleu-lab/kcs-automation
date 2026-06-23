@@ -11,7 +11,7 @@ import discord
 import requests
 
 TOKEN = os.environ["DISCORD_BOT_TOKEN"]
-GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+GITHUB_TOKEN = os.environ["GH_PAT"]
 GITHUB_REPO = os.environ["GITHUB_REPO"]  # 例: kenny1102/kcs-automation
 
 # 承認待ちの投稿を一時保存 {approval_id: {post_text, account, expires_at}}
