@@ -7,6 +7,7 @@ Render.com では discord_bot.py と同じサービスで起動できるよう
 別スレッドで動かす。
 """
 import json
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -36,7 +37,9 @@ class Handler(BaseHTTPRequestHandler):
         pass  # アクセスログを抑制
 
 
-def start(port: int = 8080):
+def start(port: int = None):
+    if port is None:
+        port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(("0.0.0.0", port), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
