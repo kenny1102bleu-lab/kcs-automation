@@ -15,6 +15,7 @@ from scripts.common.discord_notify import notify, notify_post_preview
 from scripts.common.news_pool import fetch_theme, format_theme_prompt
 from scripts.common.post_parser import parse as parse_post
 from scripts.common.nana import generate_media
+from scripts.common.ng_patterns import scan as ng_scan
 
 YUKI_PROMPT = """あなたはKCS合同会社のタレント専属ディレクター「ユキ」です。
 SNS女性タレント「HAL（ハル）」の投稿テキストを作成します。
@@ -70,6 +71,12 @@ def run():
         else:
             notify(f"⚠️ HAL投稿がマモル審査を通過できませんでした。\n理由: {result['reason']}")
             return
+
+    # NGパターン最終監査（マモル後の二重チェック）
+    ng = ng_scan(post_text)
+    if ng:
+        notify(f"⚠️ HAL投稿NG監査拒否: {ng[0]} = `{ng[1]}`\n投稿テキスト: {post_text[:200]}")
+        return
 
     # ナナ: メディア生成（image/video/none）
     media = generate_media(parsed["media_type"], parsed["media_prompt"], account="HAL")

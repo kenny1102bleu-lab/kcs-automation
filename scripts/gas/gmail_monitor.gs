@@ -14,24 +14,34 @@
  */
 
 const GMAIL_WATCH_QUERY =
-  '(from:notifications@github.com OR from:no-reply@render.com OR from:render.com OR ' +
-  'from:notifications@anthropic.com OR from:noreply@google.com) ' +
-  'subject:(failed OR failure OR error OR alert OR warning OR 失敗 OR エラー) ' +
+  '(from:no-reply@marketing.base44.com OR from:chelsea.c@ifttt.com OR ' +
+  'from:em@em1.cloudflare.com OR from:notifications@github.com OR ' +
+  'from:noreply@us2.make.com) ' +
+  '(subject:(error OR failed OR limit OR quota OR inactive OR alert OR warning) ' +
+  'OR "error" OR "failed" OR "limit") ' +
   'newer_than:2h is:unread';
 
 const PROCESSED_LABEL = 'kcs-monitored';
+const HEARTBEAT_KEY = 'GMAIL_LAST_RUN_TS';
+const HEARTBEAT_THRESHOLD_MS = 60 * 60 * 1000;  // 60分
 
 function setupGmailMonitorTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => {
-    if (t.getHandlerFunction() === 'gmailMonitorTick') ScriptApp.deleteTrigger(t);
+    const fn = t.getHandlerFunction();
+    if (fn === 'gmailMonitorTick' || fn === 'gmailMonitorHeartbeatCheck') {
+      ScriptApp.deleteTrigger(t);
+    }
   });
   ScriptApp.newTrigger('gmailMonitorTick').timeBased().everyHours(1).create();
+  // ハートビートチェックは30分毎（脱落検知）
+  ScriptApp.newTrigger('gmailMonitorHeartbeatCheck').timeBased().everyMinutes(30).create();
 
-  // 処理済みラベル準備
   if (!GmailApp.getUserLabelByName(PROCESSED_LABEL)) {
     GmailApp.createLabel(PROCESSED_LABEL);
   }
-  Logger.log('Gmail監視1時間毎トリガーを登録しました');
+  // 初期ハートビート登録
+  PropertiesService.getScriptProperties().setProperty(HEARTBEAT_KEY, String(Date.now()));
+  Logger.log('Gmail監視: 1時間毎トリガー＋30分毎ハートビートを登録しました');
 }
 
 function gmailMonitorTick() {
@@ -79,9 +89,39 @@ function gmailMonitorTick() {
     });
 
     Logger.log('Processed ' + threads.length + ' threads');
+    PropertiesService.getScriptProperties().setProperty(HEARTBEAT_KEY, String(Date.now()));
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * ハートビートチェック: 60分以上 gmailMonitorTick が走っていなければ
+ * トリガー脱落と判定し再セットアップする。別トリガーで5分毎などに走らせる前提。
+ */
+function gmailMonitorHeartbeatCheck() {
+  const lastStr = PropertiesService.getScriptProperties().getProperty(HEARTBEAT_KEY);
+  const last = lastStr ? Number(lastStr) : 0;
+  const drift = Date.now() - last;
+  if (last && drift < HEARTBEAT_THRESHOLD_MS) return;
+
+  Logger.log('Heartbeat stale (drift=' + Math.round(drift / 60000) + 'min) → re-installing triggers');
+  setupGmailMonitorTrigger();
+
+  const webhook = _getSetting('DISCORD_WEBHOOK_URL_ERROR') || _getSetting('DISCORD_WEBHOOK_URL');
+  if (webhook) {
+    UrlFetchApp.fetch(webhook, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({
+        content: '🩺 **自己修復**: Gmail監視トリガー脱落を検知→再セットアップ完了 (drift=' +
+          Math.round(drift / 60000) + '分)',
+      }),
+      muteHttpExceptions: true,
+    });
+  }
+  // 即時1回実行
+  gmailMonitorTick();
 }
 
 function _getSetting(key) {

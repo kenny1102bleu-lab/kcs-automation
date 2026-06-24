@@ -14,6 +14,7 @@ from scripts.common.discord_notify import notify, notify_post_preview
 from scripts.common.news_pool import fetch_theme, format_theme_prompt
 from scripts.common.post_parser import parse as parse_post
 from scripts.common.nana import generate_media
+from scripts.common.ng_patterns import scan as ng_scan
 
 TAKUMI_PROMPT = """あなたはKCS合同会社のアフィリエイト担当「タクミ」です。
 ガジェット系アフィリエイトアカウント「すなくん」の投稿テキストを作成します。
@@ -63,6 +64,12 @@ def run():
         else:
             notify(f"⚠️ すなくん投稿がマモル審査を通過できませんでした。\n理由: {result['reason']}")
             return
+
+    # NGパターン最終監査
+    ng = ng_scan(post_text, exclude=["body_url_direct"])  # すなくんは[LINK]プレースホルダ許容
+    if ng:
+        notify(f"⚠️ すなくん投稿NG監査拒否: {ng[0]} = `{ng[1]}`\n投稿テキスト: {post_text[:200]}")
+        return
 
     media = generate_media(parsed["media_type"], parsed["media_prompt"], account="SUNAKUN")
 
