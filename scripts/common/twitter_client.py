@@ -1,27 +1,51 @@
+"""
+X(Twitter) クライアント。
+- post_tweet: text のみ
+- post_tweet_with_media: 画像/動画付き (v1.1 API でmedia upload → v2でtweet)
+- post_reply: セルフリプライ（engagementTick用）
+"""
 import os
 import tweepy
 
-def get_client(
-    api_key_env="TWITTER_API_KEY",
-    api_secret_env="TWITTER_API_SECRET",
-    access_token_env="TWITTER_ACCESS_TOKEN",
-    access_secret_env="TWITTER_ACCESS_SECRET",
-) -> tweepy.Client:
+
+def _v2_client(prefix: str) -> tweepy.Client:
     return tweepy.Client(
-        consumer_key=os.environ[api_key_env],
-        consumer_secret=os.environ[api_secret_env],
-        access_token=os.environ[access_token_env],
-        access_token_secret=os.environ[access_secret_env],
+        consumer_key=os.environ[f"{prefix}_TWITTER_API_KEY"],
+        consumer_secret=os.environ[f"{prefix}_TWITTER_API_SECRET"],
+        access_token=os.environ[f"{prefix}_TWITTER_ACCESS_TOKEN"],
+        access_token_secret=os.environ[f"{prefix}_TWITTER_ACCESS_SECRET"],
     )
 
-def post_tweet(text: str, account: str = "HAL") -> str:
-    """account に応じて環境変数プレフィックスを切り替える。戻り値はtweet_id。"""
-    prefix = account.upper()
-    client = get_client(
-        api_key_env=f"{prefix}_TWITTER_API_KEY",
-        api_secret_env=f"{prefix}_TWITTER_API_SECRET",
-        access_token_env=f"{prefix}_TWITTER_ACCESS_TOKEN",
-        access_secret_env=f"{prefix}_TWITTER_ACCESS_SECRET",
+
+def _v1_api(prefix: str) -> tweepy.API:
+    auth = tweepy.OAuth1UserHandler(
+        os.environ[f"{prefix}_TWITTER_API_KEY"],
+        os.environ[f"{prefix}_TWITTER_API_SECRET"],
+        os.environ[f"{prefix}_TWITTER_ACCESS_TOKEN"],
+        os.environ[f"{prefix}_TWITTER_ACCESS_SECRET"],
     )
-    response = client.create_tweet(text=text)
+    return tweepy.API(auth)
+
+
+def post_tweet(text: str, account: str = "HAL") -> str:
+    prefix = account.upper()
+    response = _v2_client(prefix).create_tweet(text=text)
+    return str(response.data["id"])
+
+
+def post_tweet_with_media(text: str, media_path: str, account: str = "HAL") -> str:
+    prefix = account.upper()
+    if not media_path or not os.path.exists(media_path):
+        return post_tweet(text, account)
+    media = _v1_api(prefix).media_upload(filename=media_path)
+    response = _v2_client(prefix).create_tweet(text=text, media_ids=[media.media_id_string])
+    return str(response.data["id"])
+
+
+def post_reply(text: str, in_reply_to_tweet_id: str, account: str = "HAL") -> str:
+    prefix = account.upper()
+    response = _v2_client(prefix).create_tweet(
+        text=text,
+        in_reply_to_tweet_id=in_reply_to_tweet_id,
+    )
     return str(response.data["id"])

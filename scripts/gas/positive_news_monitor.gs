@@ -69,9 +69,10 @@ function positiveNewsMonitor() {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
     if (!sh) { setupPendingNewsSheet(); return; }
 
-    const existingIds = new Set(
-      sh.getRange(2, 1, Math.max(0, sh.getLastRow() - 1), 1).getValues().flat()
-    );
+    const lastRow = sh.getLastRow();
+    const existingIds = lastRow >= 2
+      ? new Set(sh.getRange(2, 1, lastRow - 1, 1).getValues().flat())
+      : new Set();
 
     const candidates = [];
     for (const [category, url] of Object.entries(YAHOO_FEEDS)) {

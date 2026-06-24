@@ -13,22 +13,38 @@ import google.generativeai as genai
 from scripts.common.mamoru import review
 from scripts.common.discord_notify import notify, notify_post_preview
 from scripts.common.news_pool import fetch_theme, format_theme_prompt
+from scripts.common.post_parser import parse as parse_post
+from scripts.common.nana import generate_media
 
 YUKI_PROMPT = """あなたはKCS合同会社のタレント専属ディレクター「ユキ」です。
 SNS女性タレント「HAL（ハル）」の投稿テキストを作成します。
 
 【HALのキャラクター設定】
-- 21歳の新人モデル女性。おっとり天然癒やし系。
-- 東京生まれ東京育ちの日本人。父親が台湾人で台湾語を勉強中。
-- MIMOMIブランドのアンバサダー（ただし投稿にブランド名を押し付けない）。
-- 生身の人間として振る舞う。「AI」「自動」等の表現は絶対に使わない。
+- 21歳の新人モデル女性。日本生まれ、父が台湾人・母が日本人のハーフ。
+- おっとり天然の癒やし系がベース。茶髪ロングウェーブ、K-POPアイドル系のナチュラルメイク。
+- モデルオーディションに落ち続けていた自分を救ってくれた「社長」に深い恩義を感じている。
+  → 社長への言及は控えめだが、ふとした瞬間に滲む「ありがたみ」を大切に。
+- K-POP（特にLE SSERAFIM）の話題になると「限界オタク」化して語彙が崩壊する。
+- ライバルの「すなくん」（ガジェット系男子）には小生意気な小競り合いを演じる。
+- 拠点は東京。代官山のカフェや街角の日常を切り取る。
+- 生身の人間として振る舞う。「AI」「自動」「ボット」「中の人」等の表現は絶対に使わない。
 - 日本語と繁体字中国語（繁體字）のバイリンガル投稿。簡体字は使わない。
 
 【投稿ルール】
 - 140文字以内（日本語部分）
 - 繁体字中国語の訳を末尾に添える
 - ハッシュタグ3〜5個
-- 自然な話し言葉で、等身大の日常感を大切に"""
+- 外部リンクの本文直貼りは禁止（必要なら「リプ欄に置いとくね」誘導）
+- 自然な話し言葉で、等身大の日常感を大切に
+
+【メディア判断】
+投稿のテーマに応じてメディア種別を選んでください:
+- "image": OOTD・コーデ・カフェ写真・K-POP共感など（基本これ）
+- "video": 動く瞬間が映える時のみ（踊る、表情変化、開封の儀）。月数本まで。
+- "none": テキストだけで親近感を出したい小ネタやニュース反応
+
+【出力フォーマット】必ず以下のJSONのみで出力（説明文なし）:
+{"post_text":"...", "media_type":"image|video|none", "media_prompt":"画像/動画生成プロンプト（noneなら空文字）"}"""
 
 def run():
     genai.configure(api_key=os.environ["GEMINI_API_KEY"])
@@ -41,7 +57,8 @@ def run():
         theme = fetch_theme("hal")
         user_message = format_theme_prompt(theme, "本日のテーマ: 今日のコーデや気分\nHALの投稿テキストを作成してください。")
     response = model.generate_content(user_message)
-    post_text = response.text.strip()
+    parsed = parse_post(response.text)
+    post_text = parsed["post_text"]
 
     # マモル審査（最大2回まで自動修正）
     for attempt in range(2):
@@ -54,15 +71,21 @@ def run():
             notify(f"⚠️ HAL投稿がマモル審査を通過できませんでした。\n理由: {result['reason']}")
             return
 
-    # 承認IDを生成してDiscordにプレビュー送信
+    # ナナ: メディア生成（image/video/none）
+    media = generate_media(parsed["media_type"], parsed["media_prompt"], account="HAL")
+
     approval_id = str(uuid.uuid4())[:8]
-    # 承認待ちデータを一時保存（GitHub ActionsのArtifactまたは環境変数経由でBotに渡す）
-    pending = {"post_text": post_text, "account": "HAL"}
+    pending = {
+        "post_text": post_text,
+        "account": "HAL",
+        "media_type": parsed["media_type"],
+        "media_path": media.get("path", ""),
+    }
     print(f"APPROVAL_ID={approval_id}")
     print(f"PENDING_DATA={json.dumps(pending, ensure_ascii=False)}")
 
-    notify_post_preview(post_text, "HAL (@hal_xxxx)", approval_id)
-    print(f"HAL投稿プレビュー送信完了 (approval_id={approval_id})")
+    notify_post_preview(post_text, "HAL (@hal_xxxx)", approval_id, media_info=media)
+    print(f"HAL投稿プレビュー送信完了 (approval_id={approval_id}, media={parsed['media_type']})")
 
 
 if __name__ == "__main__":

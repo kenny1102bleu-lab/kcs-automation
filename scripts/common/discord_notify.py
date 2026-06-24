@@ -1,19 +1,72 @@
+"""
+Discord 通知ユーティリティ。
+DISCORD_WEBHOOK_URLS が JSON で複数チャンネル定義されている場合はチャンネル別に送信。
+fallback で DISCORD_WEBHOOK_URL (単一) を使う。
+"""
+import json
 import os
+import pathlib
 import requests
 
-WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
+_RAW_URLS = os.environ.get("DISCORD_WEBHOOK_URLS", "").strip()
+try:
+    WEBHOOKS = json.loads(_RAW_URLS) if _RAW_URLS else {}
+except Exception:
+    WEBHOOKS = {}
 
-def notify(message: str, channel_webhook: str = None) -> None:
-    url = channel_webhook or WEBHOOK_URL
+DEFAULT_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL", "")
+
+
+def _resolve(channel: str | None) -> str:
+    if channel and channel in WEBHOOKS:
+        return WEBHOOKS[channel]
+    return DEFAULT_WEBHOOK
+
+
+def notify(message: str, channel: str | None = None, channel_webhook: str | None = None) -> None:
+    """テキスト通知。channel='error-log' などで分離可能。"""
+    url = channel_webhook or _resolve(channel)
+    if not url:
+        return
     requests.post(url, json={"content": message})
 
-def notify_post_preview(post_text: str, account: str, workflow_id: str) -> None:
-    """X投稿プレビューをDiscordに送信。社長がBotコマンドで承認する。"""
+
+def notify_with_file(message: str, file_path: str, channel: str | None = None) -> None:
+    """メディア添付通知（画像/動画プレビュー用）。"""
+    url = _resolve(channel)
+    if not url:
+        return
+    p = pathlib.Path(file_path)
+    if not p.exists():
+        notify(message, channel)
+        return
+    with p.open("rb") as f:
+        requests.post(url, data={"payload_json": json.dumps({"content": message})},
+                      files={"file": (p.name, f)})
+
+
+def notify_post_preview(post_text: str, account: str, workflow_id: str,
+                        media_info: dict | None = None) -> None:
+    """X投稿プレビュー。media_infoがあれば添付して送信。"""
+    media_line = ""
+    media_path = ""
+    if media_info:
+        mtype = media_info.get("type", "none")
+        media_path = media_info.get("path", "")
+        if mtype != "none":
+            media_line = f"🎬 メディア: {mtype}" + (
+                f" (ミオ評価 {media_info.get('mio_score','?')}/100)" if media_info.get("mio_score") else ""
+            ) + "\n"
+
     message = (
         f"📝 **{account} 投稿プレビュー**\n"
         f"```\n{post_text}\n```\n"
-        f"承認する場合: `!承認 {workflow_id}`\n"
-        f"却下する場合: `!却下 {workflow_id}`\n"
+        f"{media_line}"
+        f"承認: `!承認 {workflow_id}` （または `!返信承認 {workflow_id}`）\n"
+        f"却下: `!却下 {workflow_id}` （または `!返信スキップ {workflow_id}`）\n"
         f"⏱️ 30分以内に返答がない場合は自動キャンセルされます。"
     )
-    notify(message)
+    if media_path and pathlib.Path(media_path).exists():
+        notify_with_file(message, media_path, channel="pending-approval")
+    else:
+        notify(message, channel="pending-approval")
