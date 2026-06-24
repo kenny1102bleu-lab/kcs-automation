@@ -32,9 +32,8 @@ function setupGmailMonitorTrigger() {
       ScriptApp.deleteTrigger(t);
     }
   });
-  ScriptApp.newTrigger('gmailMonitorTick').timeBased().everyHours(1).create();
-  // ハートビートチェックは30分毎（脱落検知）
-  ScriptApp.newTrigger('gmailMonitorHeartbeatCheck').timeBased().everyMinutes(30).create();
+  // GASトリガー上限対策で1本に統合: 30分毎にtick + ハートビートチェック内蔵
+  ScriptApp.newTrigger('gmailMonitorTick').timeBased().everyMinutes(30).create();
 
   if (!GmailApp.getUserLabelByName(PROCESSED_LABEL)) {
     GmailApp.createLabel(PROCESSED_LABEL);
@@ -47,6 +46,14 @@ function setupGmailMonitorTrigger() {
 function gmailMonitorTick() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return;
+  // ハートビート: 前回からの間隔が閾値超ならログ（トリガー脱落シグナル）
+  const lastStr = PropertiesService.getScriptProperties().getProperty(HEARTBEAT_KEY);
+  if (lastStr) {
+    const drift = Date.now() - Number(lastStr);
+    if (drift > HEARTBEAT_THRESHOLD_MS) {
+      Logger.log('Heartbeat drift detected: ' + Math.round(drift / 60000) + 'min');
+    }
+  }
   try {
     const label = GmailApp.getUserLabelByName(PROCESSED_LABEL)
       || GmailApp.createLabel(PROCESSED_LABEL);
