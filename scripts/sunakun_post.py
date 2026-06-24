@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import google.generativeai as genai
 from scripts.common.mamoru import review
 from scripts.common.discord_notify import notify, notify_post_preview
+from scripts.common.news_pool import fetch_theme, format_theme_prompt
 
 TAKUMI_PROMPT = """あなたはKCS合同会社のアフィリエイト担当「タクミ」です。
 ガジェット系アフィリエイトアカウント「すなくん」の投稿テキストを作成します。
@@ -30,8 +31,13 @@ def run():
     genai.configure(api_key=os.environ["GEMINI_API_KEY"])
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=TAKUMI_PROMPT)
 
-    theme = os.environ.get("POST_THEME", "最新のコスパ最強ガジェット")
-    response = model.generate_content(f"本日のテーマ: {theme}\nすなくんの投稿テキストを作成してください。")
+    manual_theme = os.environ.get("POST_THEME", "").strip()
+    if manual_theme:
+        user_message = f"本日のテーマ: {manual_theme}\nすなくんの投稿テキストを作成してください。"
+    else:
+        theme = fetch_theme("sunakun")
+        user_message = format_theme_prompt(theme, "本日のテーマ: 最新のコスパ最強ガジェット\nすなくんの投稿テキストを作成してください。")
+    response = model.generate_content(user_message)
     post_text = response.text.strip()
 
     for attempt in range(2):

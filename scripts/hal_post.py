@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import google.generativeai as genai
 from scripts.common.mamoru import review
 from scripts.common.discord_notify import notify, notify_post_preview
+from scripts.common.news_pool import fetch_theme, format_theme_prompt
 
 YUKI_PROMPT = """あなたはKCS合同会社のタレント専属ディレクター「ユキ」です。
 SNS女性タレント「HAL（ハル）」の投稿テキストを作成します。
@@ -33,8 +34,13 @@ def run():
     genai.configure(api_key=os.environ["GEMINI_API_KEY"])
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=YUKI_PROMPT)
 
-    theme = os.environ.get("POST_THEME", "今日のコーデや気分")
-    response = model.generate_content(f"本日のテーマ: {theme}\nHALの投稿テキストを作成してください。")
+    manual_theme = os.environ.get("POST_THEME", "").strip()
+    if manual_theme:
+        user_message = f"本日のテーマ: {manual_theme}\nHALの投稿テキストを作成してください。"
+    else:
+        theme = fetch_theme("hal")
+        user_message = format_theme_prompt(theme, "本日のテーマ: 今日のコーデや気分\nHALの投稿テキストを作成してください。")
+    response = model.generate_content(user_message)
     post_text = response.text.strip()
 
     # マモル審査（最大2回まで自動修正）
