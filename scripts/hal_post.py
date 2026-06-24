@@ -75,14 +75,25 @@ def run():
     media = generate_media(parsed["media_type"], parsed["media_prompt"], account="HAL")
 
     approval_id = str(uuid.uuid4())[:8]
+    media_path = media.get("path", "")
     pending = {
         "post_text": post_text,
         "account": "HAL",
         "media_type": parsed["media_type"],
-        "media_path": media.get("path", ""),
+        "media_filename": os.path.basename(media_path) if media_path else "",
+        "media_run_id": os.environ.get("GITHUB_RUN_ID", ""),
     }
     print(f"APPROVAL_ID={approval_id}")
     print(f"PENDING_DATA={json.dumps(pending, ensure_ascii=False)}")
+
+    # Botに承認待ち登録（Render側Webhookサーバーへ）
+    bot_webhook = os.environ.get("BOT_WEBHOOK_URL", "")
+    if bot_webhook:
+        try:
+            import requests
+            requests.post(bot_webhook, json={"approval_id": approval_id, **pending}, timeout=10)
+        except Exception as e:
+            print(f"bot webhook failed: {e}")
 
     notify_post_preview(post_text, "HAL (@hal_xxxx)", approval_id, media_info=media)
     print(f"HAL投稿プレビュー送信完了 (approval_id={approval_id}, media={parsed['media_type']})")

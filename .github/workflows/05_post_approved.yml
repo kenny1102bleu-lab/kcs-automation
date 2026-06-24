@@ -13,12 +13,33 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
+
+      - name: Download media artifact (if specified)
+        if: github.event.client_payload.media_run_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          MEDIA_RUN_ID: ${{ github.event.client_payload.media_run_id }}
+        run: |
+          mkdir -p media_in
+          gh run download $MEDIA_RUN_ID --repo ${{ github.repository }} \
+            --name media-$MEDIA_RUN_ID --dir media_in/ || echo "no media artifact"
+
+      - id: resolve_media
+        run: |
+          if [ -n "${{ github.event.client_payload.media_filename }}" ]; then
+            P="media_in/${{ github.event.client_payload.media_filename }}"
+            if [ -f "$P" ]; then echo "media_path=$P" >> $GITHUB_OUTPUT; fi
+          fi
+
       - run: python scripts/post_approved.py
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
           POST_TEXT: ${{ github.event.client_payload.post_text }}
           ACCOUNT: ${{ github.event.client_payload.account }}
+          MEDIA_PATH: ${{ steps.resolve_media.outputs.media_path }}
+          AFFILIATE_LINK: ${{ github.event.client_payload.affiliate_link }}
           HAL_TWITTER_API_KEY: ${{ secrets.HAL_TWITTER_API_KEY }}
           HAL_TWITTER_API_SECRET: ${{ secrets.HAL_TWITTER_API_SECRET }}
           HAL_TWITTER_ACCESS_TOKEN: ${{ secrets.HAL_TWITTER_ACCESS_TOKEN }}

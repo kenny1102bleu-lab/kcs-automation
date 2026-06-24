@@ -89,9 +89,17 @@ async def on_message(message: discord.Message):
         if data is None:
             await message.reply(f"❌ 承認ID `{approval_id}` が見つかりません（期限切れか無効）")
             return
+        # media_path に "run_id:filename" を入れている
+        media_run_id, media_filename = "", ""
+        mp = data.get("media_path", "") if isinstance(data, dict) else ""
+        if mp and ":" in mp:
+            media_run_id, media_filename = mp.split(":", 1)
         ok = trigger_workflow("post-approved", {
             "post_text": data["post_text"],
             "account": data["account"],
+            "media_run_id": media_run_id,
+            "media_filename": media_filename,
+            "affiliate_link": "",
         })
         if ok:
             await message.reply(f"✅ `{data['account']}` の投稿を承認しました。X投稿を実行します。")
@@ -184,6 +192,9 @@ async def on_message(message: discord.Message):
 
 
 def register_pending(approval_id: str, post_text: str, account: str,
-                     media_path: str = "", media_type: str = "none"):
+                     media_filename: str = "", media_run_id: str = "",
+                     media_type: str = "none"):
     """外部から承認待ちを登録する。Gist永続化＋30分TTL（store側で管理）。"""
-    _store.set(approval_id, post_text, account, media_path, media_type, ttl_sec=1800)
+    # media_path フィールドに media_filename を入れて再利用
+    extra_path = f"{media_run_id}:{media_filename}" if media_filename else ""
+    _store.set(approval_id, post_text, account, extra_path, media_type, ttl_sec=1800)

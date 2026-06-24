@@ -19,9 +19,21 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - run: python scripts/hal_post.py
+      - id: gen
+        run: python scripts/hal_post.py | tee /tmp/hal_post.log
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
+          GAS_NEWS_API_URL: ${{ secrets.GAS_NEWS_API_URL }}
+          MAX_VIDEO_PER_MONTH: '10'
           POST_THEME: ${{ inputs.theme }}
+      - name: Upload generated media as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-${{ github.run_id }}
+          path: media_out/
+          retention-days: 1
+          if-no-files-found: ignore
