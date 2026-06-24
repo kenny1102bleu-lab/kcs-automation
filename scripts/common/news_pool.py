@@ -13,7 +13,7 @@ def fetch_theme(account: str, timeout: int = 10) -> dict | None:
     if not url:
         return None
     try:
-        r = requests.get(url, params={"account": account.lower()}, timeout=timeout)
+        r = requests.get(url, params={"action": "news_pool", "account": account.lower()}, timeout=timeout)
         if r.status_code != 200:
             return None
         data = r.json()
