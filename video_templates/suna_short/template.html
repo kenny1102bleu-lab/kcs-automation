@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet" />
+    <style>
+      @font-face { font-family: "Noto Sans JP"; src: local("Noto Sans JP"); }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; background: #0a1525; }
+      body { font-family: "Noto Sans JP", sans-serif; color: #fff; }
+      .video-bg {
+        position: absolute; left: 0; top: 180px; width: 1080px; height: 1440px;
+        object-fit: cover;
+      }
+      .hook {
+        position: absolute; top: 56px; left: 40px; right: 40px;
+        font-size: 78px; font-weight: 900; line-height: 1.15; letter-spacing: 0.02em;
+        color: #fff; text-shadow: 0 0 14px rgba(255,210,80,0.5);
+      }
+      .hook .accent { color: #ffd650; }
+      .product-card {
+        position: absolute; left: 40px; right: 40px; bottom: 380px;
+        background: rgba(0,0,0,0.78); border: 3px solid #ffd650; border-radius: 28px;
+        padding: 36px 40px;
+      }
+      .product-name { font-size: 56px; font-weight: 800; line-height: 1.2; }
+      .price-row { margin-top: 20px; display: flex; align-items: baseline; gap: 18px; }
+      .price { font-size: 84px; font-weight: 900; color: #ffd650; }
+      .price-unit { font-size: 40px; font-weight: 700; color: #ffd650; }
+      .cta {
+        position: absolute; left: 40px; right: 40px; bottom: 80px;
+        background: linear-gradient(135deg, #ff5470 0%, #ffd650 100%);
+        color: #0a1525; font-weight: 900; font-size: 54px;
+        padding: 36px 0; text-align: center; border-radius: 24px;
+        text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+      }
+      .badge {
+        position: absolute; top: 220px; right: 40px;
+        background: #ff3b6b; color: #fff;
+        font-size: 38px; font-weight: 900;
+        padding: 18px 28px; border-radius: 18px;
+        transform: rotate(8deg);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.45);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="suna_short"
+      data-start="0"
+      data-duration="{{duration}}"
+      data-width="1080"
+      data-height="1920"
+    >
+      <video class="clip video-bg" data-start="0" data-duration="{{duration}}" data-track-index="1"
+             src="assets/main.mp4" muted playsinline></video>
+
+      <div class="hook clip" data-start="0" data-duration="{{duration}}" data-track-index="2">
+        {{hook_line}}<br><span class="accent">{{hook_accent}}</span>
+      </div>
+
+      <div class="badge clip" data-start="0.5" data-duration="{{duration}}" data-track-index="3">{{badge}}</div>
+
+      <div class="product-card clip" data-start="1.2" data-duration="{{duration}}" data-track-index="4">
+        <div class="product-name">{{product_name}}</div>
+        <div class="price-row">
+          <span class="price">¥{{price}}</span>
+          <span class="price-unit">{{price_unit}}</span>
+        </div>
+      </div>
+
+      <div class="cta clip" data-start="2.0" data-duration="{{duration}}" data-track-index="5">{{cta_text}}</div>
+    </div>
+  </body>
+</html>
