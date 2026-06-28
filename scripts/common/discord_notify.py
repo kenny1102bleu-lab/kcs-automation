@@ -8,13 +8,32 @@ import os
 import pathlib
 import requests
 
-_RAW_URLS = os.environ.get("DISCORD_WEBHOOK_URLS", "").strip()
+
+def _clean_env(name: str) -> str:
+    """環境変数からBOMとゼロ幅スペース等の不可視文字を除去。
+    Windows経由で GitHub Secrets に貼った値に BOM(﻿) が混入すると requests が
+    InvalidSchema: No connection adapters for '﻿https://...' を投げて落ちるため。
+    """
+    val = os.environ.get(name, "")
+    return val.replace('﻿', '').replace('​', '').replace('‌', '').replace('‍', '').strip()
+
+
+def _clean_url(url: str) -> str:
+    """URL文字列からBOM等の不可視文字を除去（WEBHOOKS dict の値にも適用するため）"""
+    if not isinstance(url, str):
+        return ""
+    return url.replace('﻿', '').replace('​', '').replace('‌', '').replace('‍', '').strip()
+
+
+_RAW_URLS = _clean_env("DISCORD_WEBHOOK_URLS")
 try:
     WEBHOOKS = json.loads(_RAW_URLS) if _RAW_URLS else {}
+    # 各 webhook URL も念のため BOM 除去
+    WEBHOOKS = {k: _clean_url(v) for k, v in WEBHOOKS.items()}
 except Exception:
     WEBHOOKS = {}
 
-DEFAULT_WEBHOOK = os.environ.get("DISCORD_WEBHOOK_URL", "")
+DEFAULT_WEBHOOK = _clean_env("DISCORD_WEBHOOK_URL")
 
 
 def _resolve(channel: str | None) -> str:
@@ -25,7 +44,7 @@ def _resolve(channel: str | None) -> str:
 
 def notify(message: str, channel: str | None = None, channel_webhook: str | None = None) -> None:
     """テキスト通知。channel='error-log' などで分離可能。"""
-    url = channel_webhook or _resolve(channel)
+    url = _clean_url(channel_webhook) if channel_webhook else _resolve(channel)
     if not url:
         return
     requests.post(url, json={"content": message})
