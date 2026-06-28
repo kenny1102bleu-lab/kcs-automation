@@ -1,0 +1,32 @@
+name: WF-08 もるYouTube Shorts生成
+
+on:
+  schedule:
+    - cron: '0 8 * * 2,4,6'  # JST 17:00 火木土（週3本ペース）
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: '動画題材（空欄で自動）'
+        required: false
+        default: ''
+
+jobs:
+  moru:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: '1'
+      LANG: C.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python scripts/moru_shorts.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
+          GITHUB_DISPATCH_TOKEN: ${{ secrets.WORKFLOW_DISPATCH_TOKEN }}
+          POST_THEME: ${{ inputs.theme }}
