@@ -16,6 +16,8 @@ import base64
 import pathlib
 import requests
 
+from scripts.common.env_clean import clean_env
+
 
 CRITERIA = {
     "HAL": (
@@ -56,7 +58,7 @@ def inspect_media(image_path: str, account: str) -> dict:
     try:
         r = requests.post(
             url,
-            params={"key": os.environ["GEMINI_API_KEY"]},
+            params={"key": clean_env("GEMINI_API_KEY")},
             json={
                 "contents": [{
                     "parts": [

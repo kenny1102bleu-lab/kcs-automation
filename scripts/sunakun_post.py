@@ -17,6 +17,7 @@ from scripts.common.nana import generate_media
 from scripts.common.ng_patterns import scan as ng_scan
 from scripts.common.buzz_patterns import get_buzz_summary
 from scripts.common.engagement_loop import get_win_patterns
+from scripts.common.env_clean import clean_env
 
 TAKUMI_PROMPT = """あなたはKCS合同会社のアフィリエイト担当「タクミ」です。
 ガジェット系アフィリエイトアカウント「すなくん」の投稿テキストを作成します。
@@ -59,7 +60,7 @@ def _build_context_block() -> str:
     return "\n\n" + "\n\n".join(blocks) + "\n\n上記は参考情報。3段構成・PR表記・URL直貼り禁止・3アクション誘導の運用ルールは絶対遵守。"
 
 def run():
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    genai.configure(api_key=clean_env("GEMINI_API_KEY"))
     system_prompt = TAKUMI_PROMPT + _build_context_block()
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
 

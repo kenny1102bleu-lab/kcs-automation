@@ -13,6 +13,7 @@ import pathlib
 import requests
 
 from scripts.common.mio import inspect_media
+from scripts.common.env_clean import clean_env
 
 OUTPUT_DIR = pathlib.Path("media_out")
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -30,7 +31,7 @@ SUNAKUN_BASE_STYLE = (
 
 
 def _api_key():
-    return os.environ["GEMINI_API_KEY"]
+    return clean_env("GEMINI_API_KEY")
 
 
 def _video_usage_path():
