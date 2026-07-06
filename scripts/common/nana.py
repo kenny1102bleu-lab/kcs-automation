@@ -18,6 +18,20 @@ from scripts.common.env_clean import clean_env, redact_key
 OUTPUT_DIR = pathlib.Path("media_out")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+# アカウントごとの顔参照画像。存在すれば生成時にinlineDataとして渡し、
+# 「毎回別人が生成される」問題を防いで同一人物の顔を維持する。
+REFERENCE_IMAGES = {
+    "HAL": pathlib.Path("assets/reference/hal_reference.png"),
+}
+
+
+def _load_reference_b64(account: str) -> str | None:
+    p = REFERENCE_IMAGES.get(account.upper())
+    if not p or not p.exists():
+        return None
+    return base64.b64encode(p.read_bytes()).decode()
+
+
 HAL_BASE_STYLE = (
     "Japanese-Taiwanese mixed female, 21 years old, long brown wavy hair, "
     "K-pop natural makeup, soft healing aura, modest stylish clothing, "
@@ -74,26 +88,43 @@ def generate_media(media_type: str, prompt: str, account: str) -> dict:
 
 
 def _generate_image(prompt: str, account: str) -> dict:
-    """Gemini 2.5 Flash Image (Nano Banana) で画像生成 → ミオ検品"""
+    """Gemini 2.5 Flash Image (Nano Banana) で画像生成 → ミオ検品。
+    参照画像があれば同梱し、顔の同一性を維持したまま服装/シーンだけ変える。"""
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         "gemini-2.5-flash-image:generateContent"
     )
+    ref_b64 = _load_reference_b64(account)
+
+    def _build_request_parts(current_prompt: str) -> list[dict]:
+        if not ref_b64:
+            return [{"text": current_prompt}]
+        text_prompt = (
+            "Attached is the reference photo of the character. Keep the EXACT SAME face, "
+            "facial features, and identity as the attached reference photo. Do not change "
+            "who she is. Only change the outfit, pose, and scene as described below.\n\n"
+            f"Scene/outfit description: {current_prompt}"
+        )
+        return [
+            {"text": text_prompt},
+            {"inlineData": {"mimeType": "image/png", "data": ref_b64}},
+        ]
+
     for attempt in range(2):
         try:
             r = requests.post(
                 url,
                 params={"key": _api_key()},
                 json={
-                    "contents": [{"parts": [{"text": prompt}]}],
+                    "contents": [{"parts": _build_request_parts(prompt)}],
                     "generationConfig": {"responseModalities": ["IMAGE"]},
                 },
                 timeout=60,
             )
             r.raise_for_status()
             data = r.json()
-            parts = data["candidates"][0]["content"]["parts"]
-            img_b64 = next(p["inlineData"]["data"] for p in parts if "inlineData" in p)
+            response_parts = data["candidates"][0]["content"]["parts"]
+            img_b64 = next(p["inlineData"]["data"] for p in response_parts if "inlineData" in p)
         except Exception as e:
             safe_err = _redact(e)
             body = ""
