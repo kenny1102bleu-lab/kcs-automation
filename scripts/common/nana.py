@@ -77,7 +77,7 @@ def _generate_image(prompt: str, account: str) -> dict:
     """Gemini 2.5 Flash Image (Nano Banana) で画像生成 → ミオ検品"""
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        "gemini-2.5-flash-image-preview:generateContent"
+        "gemini-2.5-flash-image:generateContent"
     )
     for attempt in range(2):
         try:
@@ -122,7 +122,7 @@ def _generate_video(prompt: str, account: str) -> dict:
     """Veo で動画生成（非同期、ポーリング）"""
     create_url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        "veo-3.0-generate-preview:predictLongRunning"
+        "veo-3.1-generate-preview:predictLongRunning"
     )
     try:
         r = requests.post(
