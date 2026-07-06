@@ -1,0 +1,144 @@
+name: WF-07 video render (HyperFrames)
+
+on:
+  workflow_dispatch:
+    inputs:
+      template:
+        description: 'テンプレ名 (hal_x_post / suna_short / moru_shorts / akari_trend)'
+        required: true
+        default: 'hal_x_post'
+      variables:
+        description: '変数JSON文字列（例: {"duration":10,"caption_ja":"おはよう"}）'
+        required: true
+        default: '{"duration":10,"caption_duration":4.5,"caption_ja":"テスト字幕","caption_tc":"測試字幕","media_path":""}'
+      staff:
+        description: '依頼元スタッフ（hal/suna/moru/akari）。Discord通知のラベル用'
+        required: false
+        default: 'manual'
+      source:
+        description: 'ログ用ソース識別子'
+        required: false
+        default: 'workflow_dispatch'
+
+  repository_dispatch:
+    types: [render_video]
+
+  workflow_call:
+    inputs:
+      template:
+        type: string
+        required: true
+      variables:
+        type: string
+        required: true
+      staff:
+        type: string
+        required: false
+        default: 'called'
+      source:
+        type: string
+        required: false
+        default: 'workflow_call'
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: '1'
+      LANG: C.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Resolve render inputs (dispatch / call / manual に対応)
+        id: resolve
+        run: |
+          if [ -n "${{ inputs.template }}" ]; then
+            echo "template=${{ inputs.template }}"  >> $GITHUB_OUTPUT
+            echo "staff=${{ inputs.staff }}"        >> $GITHUB_OUTPUT
+            echo "source=${{ inputs.source }}"      >> $GITHUB_OUTPUT
+            printf 'variables<<EOF\n%s\nEOF\n' '${{ inputs.variables }}' >> $GITHUB_OUTPUT
+          else
+            echo "template=${{ github.event.client_payload.template }}" >> $GITHUB_OUTPUT
+            echo "staff=${{ github.event.client_payload.staff }}"       >> $GITHUB_OUTPUT
+            echo "source=${{ github.event.client_payload.source }}"     >> $GITHUB_OUTPUT
+            printf 'variables<<EOF\n%s\nEOF\n' '${{ toJSON(github.event.client_payload.variables) }}' >> $GITHUB_OUTPUT
+          fi
+
+      - name: Print resolved inputs
+        run: |
+          echo "Template: ${{ steps.resolve.outputs.template }}"
+          echo "Staff:    ${{ steps.resolve.outputs.staff }}"
+          echo "Source:   ${{ steps.resolve.outputs.source }}"
+          echo "Variables (JSON):"
+          echo '${{ steps.resolve.outputs.variables }}'
+
+      - name: Render via HyperFrames
+        id: render
+        run: |
+          mkdir -p media_out
+          OUT="media_out/render_${{ github.run_id }}.mp4"
+          echo '${{ steps.resolve.outputs.variables }}' \
+            | python -m scripts.common.hyperframes_runner \
+                --template "${{ steps.resolve.outputs.template }}" \
+                --output "$OUT"
+          echo "output_path=$OUT" >> $GITHUB_OUTPUT
+          ls -lh "$OUT"
+
+      - name: Upload rendered MP4 as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-${{ github.run_id }}
+          path: media_out/
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Discord notify
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
+          STATUS: ${{ job.status }}
+          TEMPLATE: ${{ steps.resolve.outputs.template }}
+          STAFF: ${{ steps.resolve.outputs.staff }}
+          SOURCE: ${{ steps.resolve.outputs.source }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          python - <<'PYEOF'
+          import os, sys
+          sys.path.insert(0, '.')
+          from scripts.common.discord_notify import notify
+          status   = os.environ["STATUS"]
+          template = os.environ["TEMPLATE"]
+          staff    = os.environ["STAFF"] or "?"
+          source   = os.environ["SOURCE"] or "?"
+          run_id   = os.environ["RUN_ID"]
+          repo     = os.environ["REPO"]
+          base     = os.environ["SERVER_URL"]
+          icon     = "✅" if status == "success" else "❌"
+          artifact_url = f"{base}/{repo}/actions/runs/{run_id}"
+          msg = (
+              f"{icon} **[WF-07] 動画レンダリング {status}**\n"
+              f"テンプレ: `{template}` / 依頼: `{staff}` / source: `{source}`\n"
+              f"ダウンロード: {artifact_url}\n"
+              f"（Artifacts タブから render-{run_id}.zip を取得）"
+          )
+          notify(msg)
+          PYEOF
