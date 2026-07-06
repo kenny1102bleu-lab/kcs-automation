@@ -79,13 +79,15 @@ class PendingStore:
             print(f"[pending_store] save failed: {e}", flush=True)
 
     def set(self, approval_id: str, post_text: str, account: str,
-            media_path: str = "", media_type: str = "none", ttl_sec: int = 1800):
+            media_path: str = "", media_type: str = "none", ttl_sec: int = 1800,
+            affiliate_link: str = ""):
         with self._lock:
             self._cache[approval_id] = {
                 "post_text": post_text,
                 "account": account,
                 "media_path": media_path,
                 "media_type": media_type,
+                "affiliate_link": affiliate_link,
                 "expires_at": time.time() + ttl_sec,
             }
             self._save()

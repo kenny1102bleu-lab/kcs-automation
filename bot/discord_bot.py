@@ -31,7 +31,8 @@ class _PendingDictAdapter:
 
     def __setitem__(self, k, v):
         _store.set(k, v.get("post_text", ""), v.get("account", ""),
-                   v.get("media_path", ""), v.get("media_type", "none"))
+                   v.get("media_path", ""), v.get("media_type", "none"),
+                   affiliate_link=v.get("affiliate_link", ""))
 
     def __contains__(self, k):
         return k in _store.all()
@@ -99,7 +100,7 @@ async def on_message(message: discord.Message):
             "account": data["account"],
             "media_run_id": media_run_id,
             "media_filename": media_filename,
-            "affiliate_link": "",
+            "affiliate_link": data.get("affiliate_link", "") if isinstance(data, dict) else "",
         })
         if ok:
             await message.reply(f"✅ `{data['account']}` の投稿を承認しました。X投稿を実行します。")
@@ -193,8 +194,9 @@ async def on_message(message: discord.Message):
 
 def register_pending(approval_id: str, post_text: str, account: str,
                      media_filename: str = "", media_run_id: str = "",
-                     media_type: str = "none"):
+                     media_type: str = "none", affiliate_link: str = ""):
     """外部から承認待ちを登録する。Gist永続化＋30分TTL（store側で管理）。"""
     # media_path フィールドに media_filename を入れて再利用
     extra_path = f"{media_run_id}:{media_filename}" if media_filename else ""
-    _store.set(approval_id, post_text, account, extra_path, media_type, ttl_sec=1800)
+    _store.set(approval_id, post_text, account, extra_path, media_type, ttl_sec=1800,
+               affiliate_link=affiliate_link)

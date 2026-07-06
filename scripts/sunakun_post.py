@@ -18,6 +18,7 @@ from scripts.common.ng_patterns import scan as ng_scan
 from scripts.common.buzz_patterns import get_buzz_summary
 from scripts.common.engagement_loop import get_win_patterns
 from scripts.common.env_clean import clean_env
+from scripts.common.product_source import fetch_trending_product, download_product_image, record_posted_url
 
 TAKUMI_PROMPT = """あなたはKCS合同会社のアフィリエイト担当「タクミ」です。
 ガジェット系アフィリエイトアカウント「すなくん」の投稿テキストを作成します。
@@ -65,7 +66,22 @@ def run():
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
 
     manual_theme = os.environ.get("POST_THEME", "").strip()
-    if manual_theme:
+    # 手動テーマ指定時はテーマ優先（既存のAI生成フローを維持）。
+    # 通常運用時は楽天ランキングAPIから実在の商品を取得し、実商品画像・
+    # 実アフィリエイトリンクで投稿する（社長指摘: AI生成の「商品風」画像ではなく実写真にすべき）。
+    product = None if manual_theme else fetch_trending_product()
+
+    if product:
+        user_message = (
+            "以下は楽天ランキングから取得した実在の商品情報です。この情報に忠実に、"
+            "捏造や誇張をせずに投稿テキストを作成してください。\n"
+            f"商品名: {product['title']}\n"
+            f"価格: {product['price']}\n"
+            f"商品説明: {product['description']}\n\n"
+            "実商品の写真を別途添付するため、media_typeは\"image\"、"
+            "media_promptは空文字で出力してください。"
+        )
+    elif manual_theme:
         user_message = f"本日のテーマ: {manual_theme}\nすなくんの投稿テキストを作成してください。"
     else:
         theme = fetch_theme("sunakun")
@@ -94,21 +110,32 @@ def run():
         "✅ 自動監査 通過済み: AI開示語 / 簡体字 / AI口調(案1･2等) / "
         "絵文字クラスタ / スパム / 個人情報\n"
         f"✅ マモル(Claude)コンプライアンス審査: 承認（{result.get('reason','問題なし')}）\n"
-        "👀 社長確認ポイント: 商品情報の正確性・PR表記の有無・3アクション誘導文言のみ"
+        + ("🛒 商品ソース: 楽天ランキングAPI（実商品・実画像・実アフィリエイトリンク）\n"
+           if product else "🛒 商品ソース: AIテーマ生成（実商品URLなし、画像もAI生成）\n")
+        + "👀 社長確認ポイント: 商品情報の正確性・PR表記の有無・3アクション誘導文言のみ"
     )
 
-    media = generate_media(parsed["media_type"], parsed["media_prompt"], account="SUNAKUN")
-    if media.get("error"):
-        qa_summary += f"\n⚠️ メディア生成失敗（テキストのみ投稿可）: {media['error']}"
+    affiliate_link = ""
+    if product:
+        media = download_product_image(product["image_url"], product["title"], account="SUNAKUN")
+        if media.get("error"):
+            qa_summary += f"\n⚠️ 実商品画像の取得に失敗（テキストのみ投稿可）: {media['error']}"
+        affiliate_link = product["affiliate_url"]
+        record_posted_url(product["item_url"])
+    else:
+        media = generate_media(parsed["media_type"], parsed["media_prompt"], account="SUNAKUN")
+        if media.get("error"):
+            qa_summary += f"\n⚠️ メディア生成失敗（テキストのみ投稿可）: {media['error']}"
 
     approval_id = str(uuid.uuid4())[:8]
     media_path = media.get("path", "")
     pending = {
         "post_text": post_text,
         "account": "SUNAKUN",
-        "media_type": parsed["media_type"],
+        "media_type": "image" if product else parsed["media_type"],
         "media_filename": os.path.basename(media_path) if media_path else "",
         "media_run_id": os.environ.get("GITHUB_RUN_ID", ""),
+        "affiliate_link": affiliate_link,
     }
     print(f"APPROVAL_ID={approval_id}")
     print(f"PENDING_DATA={json.dumps(pending, ensure_ascii=False)}")
@@ -122,7 +149,7 @@ def run():
             print(f"bot webhook failed: {e}")
 
     notify_post_preview(post_text, "すなくん (@sunakun_xxxx)", approval_id, media_info=media, qa_summary=qa_summary)
-    print(f"すなくん投稿プレビュー送信完了 (approval_id={approval_id}, media={parsed['media_type']})")
+    print(f"すなくん投稿プレビュー送信完了 (approval_id={approval_id}, media={pending['media_type']})")
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ class Handler(BaseHTTPRequestHandler):
                 media_filename=body.get("media_filename", ""),
                 media_run_id=body.get("media_run_id", ""),
                 media_type=body.get("media_type", "none"),
+                affiliate_link=body.get("affiliate_link", ""),
             )
         self.send_response(200)
         self.end_headers()
