@@ -75,14 +75,20 @@ WORK_COMPOSITION = (
     "interacting with the environment, no visible selfie arm."
 )
 PRIVATE_COMPOSITION = (
-    "Composition: a SELFIE taken by herself on her smartphone's front camera. "
-    "POV is FROM the phone's camera lens itself, so the phone/camera/device "
-    "must NEVER appear anywhere in the frame (it cannot photograph itself) - "
-    "no phone body, no camera lens, no screen visible anywhere in the image. "
-    "Her extended arm may be visible reaching toward the camera (as if holding "
-    "the phone just out of frame), close-up front-camera angle with slight "
-    "wide-angle selfie distortion, eye-level or slightly elevated perspective, "
-    "casual intimate framing typical of a personal phone selfie."
+    "Composition: a SELFIE she is taking RIGHT NOW, in this exact moment, on a "
+    "smartphone held in her own hand. This is the single most important framing "
+    "rule and must ALWAYS be followed: the camera's viewpoint IS the front camera "
+    "of the phone she is holding, so her arm MUST always be visibly extended "
+    "toward the camera (shoulder/arm leading into frame, slightly bent elbow, "
+    "as if she just raised her phone to snap the shot) - this is mandatory, not "
+    "optional, in every private/selfie image. Because the phone in her hand is "
+    "the camera taking the photo, the phone/camera/device itself must NEVER "
+    "appear anywhere in the frame (it cannot photograph itself) - no phone body, "
+    "no camera lens, no screen visible anywhere. Close-up front-camera angle "
+    "with slight wide-angle selfie distortion, eye-level or slightly elevated "
+    "perspective (arm raised above or at face height), casual intimate framing "
+    "typical of a personal phone selfie - never a composition that could be "
+    "mistaken for a photo taken by someone else."
 )
 
 
