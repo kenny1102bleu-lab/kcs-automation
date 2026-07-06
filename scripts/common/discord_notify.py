@@ -46,8 +46,10 @@ def notify_with_file(message: str, file_path: str, channel: str | None = None) -
 
 
 def notify_post_preview(post_text: str, account: str, workflow_id: str,
-                        media_info: dict | None = None) -> None:
-    """X投稿プレビュー。media_infoがあれば添付して送信。"""
+                        media_info: dict | None = None, qa_summary: str | None = None) -> None:
+    """X投稿プレビュー。media_infoがあれば添付して送信。
+    qa_summary: ここまでの自動チェックが何を確認済みかを一覧表示し、
+    社長の目視確認をトーン/事実確認だけに絞れるようにする。"""
     media_line = ""
     media_path = ""
     if media_info:
@@ -58,9 +60,12 @@ def notify_post_preview(post_text: str, account: str, workflow_id: str,
                 f" (ミオ評価 {media_info.get('mio_score','?')}/100)" if media_info.get("mio_score") else ""
             ) + "\n"
 
+    qa_block = f"{qa_summary}\n" if qa_summary else ""
+
     message = (
         f"📝 **{account} 投稿プレビュー**\n"
         f"```\n{post_text}\n```\n"
+        f"{qa_block}"
         f"{media_line}"
         f"承認: `!承認 {workflow_id}` （または `!返信承認 {workflow_id}`）\n"
         f"却下: `!却下 {workflow_id}` （または `!返信スキップ {workflow_id}`）\n"

@@ -78,6 +78,13 @@ def run():
         notify(f"⚠️ HAL投稿NG監査拒否: {ng[0]} = `{ng[1]}`\n投稿テキスト: {post_text[:200]}")
         return
 
+    qa_summary = (
+        "✅ 自動監査 通過済み: AI開示語 / MIMOMI早期言及 / URL直貼り / 簡体字 / "
+        "AI口調(案1･2等) / 絵文字クラスタ / スパム / 個人情報\n"
+        f"✅ マモル(Claude)コンプライアンス審査: 承認（{result.get('reason','問題なし')}）\n"
+        "👀 社長確認ポイント: トーン・事実関係・K-POP/推し活の時事ネタの鮮度のみ"
+    )
+
     # ナナ: メディア生成（image/video/none）
     media = generate_media(parsed["media_type"], parsed["media_prompt"], account="HAL")
 
@@ -102,7 +109,7 @@ def run():
         except Exception as e:
             print(f"bot webhook failed: {e}")
 
-    notify_post_preview(post_text, "HAL (@hal_xxxx)", approval_id, media_info=media)
+    notify_post_preview(post_text, "HAL (@hal_xxxx)", approval_id, media_info=media, qa_summary=qa_summary)
     print(f"HAL投稿プレビュー送信完了 (approval_id={approval_id}, media={parsed['media_type']})")
 
 

@@ -20,12 +20,18 @@ def run():
     media_path = os.environ.get("MEDIA_PATH", "").strip()
     affiliate_link = os.environ.get("AFFILIATE_LINK", "").strip()
 
-    if media_path and os.path.exists(media_path):
-        tweet_id = post_tweet_with_media(post_text, media_path, account)
-        meta = f" (media: {os.path.basename(media_path)})"
-    else:
-        tweet_id = post_tweet(post_text, account)
-        meta = ""
+    try:
+        if media_path and os.path.exists(media_path):
+            tweet_id = post_tweet_with_media(post_text, media_path, account)
+            meta = f" (media: {os.path.basename(media_path)})"
+        else:
+            tweet_id = post_tweet(post_text, account)
+            meta = ""
+    except Exception as e:
+        # 投稿失敗時に沈黙しない（GitHub Actionsが赤くなるだけではDiscordに気づけない）
+        notify(f"🔴 **{account}** X投稿失敗\nMEDIA_PATH={media_path or '(なし)'}\nエラー: {e}",
+               channel="error-log")
+        raise
 
     notify(f"✅ **{account}** 投稿完了{meta}\nhttps://x.com/i/web/status/{tweet_id}")
     print(f"投稿完了: tweet_id={tweet_id}")
@@ -33,8 +39,12 @@ def run():
     # engagementTick: 20分後にアフィリリンクをセルフリプ
     if affiliate_link:
         time.sleep(60 * 20)
-        reply_id = post_reply(f"リンクこちらです👇\n{affiliate_link}", tweet_id, account)
-        notify(f"🔗 セルフリプライ完了 (tweet_id={reply_id})")
+        try:
+            reply_id = post_reply(f"リンクこちらです👇\n{affiliate_link}", tweet_id, account)
+            notify(f"🔗 セルフリプライ完了 (tweet_id={reply_id})")
+        except Exception as e:
+            notify(f"🔴 **{account}** セルフリプライ失敗\nエラー: {e}", channel="error-log")
+            raise
 
 
 if __name__ == "__main__":
