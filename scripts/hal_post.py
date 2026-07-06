@@ -78,21 +78,27 @@ def run():
     response = model.generate_content(user_message)
     parsed = parse_post(response.text)
 
-    # 1段目(日本語+繁体字) + 2段目(ハッシュタグ) を組み立てる。
-    post_text = assemble_post(parsed["post_text"], parsed["hashtags"])
+    # マモルは「本文の中身」だけを審査対象にする。組み立て済みの最終文字列を
+    # 審査対象にすると、fixed_textでの書き直し時にハッシュタグごと丸ごと
+    # 上書きされ、2段構成が崩れるため（すなくん側で発覚した同種の事故を
+    # 未然に防ぐため修正）。
+    main_content = parsed["post_text"]
 
     # マモル審査（最大2回まで自動修正）
     for attempt in range(2):
-        result = review(post_text)
+        result = review(main_content)
         if result["status"] == "approved":
             break
         if attempt == 0 and "fixed_text" in result:
-            post_text = result["fixed_text"]
+            main_content = result["fixed_text"]
         else:
-            msg = f"⚠️ HAL投稿がマモル審査を通過できませんでした。\n理由: {result['reason']}\n投稿テキスト: {post_text[:300]}"
+            msg = f"⚠️ HAL投稿がマモル審査を通過できませんでした。\n理由: {result['reason']}\n投稿テキスト: {main_content[:300]}"
             print(msg)
             notify(msg)
             return
+
+    # 1段目(日本語+繁体字、マモル審査済み) + 2段目(ハッシュタグ) を組み立てる。
+    post_text = assemble_post(main_content, parsed["hashtags"])
 
     # X文字数・ハッシュタグ数チェック（全角文字は2ユニット換算の実際の上限280で検証）
     x_ok, x_reason = x_validate(post_text)
