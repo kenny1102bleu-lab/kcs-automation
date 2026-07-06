@@ -6,6 +6,7 @@ KCS Discord Bot
 """
 import os
 import json
+import base64
 import asyncio
 import discord
 import requests
@@ -49,6 +50,45 @@ pending_approvals = _PendingDictAdapter()
 intents = discord.Intents.default()
 intents.message_content = True
 bot = discord.Client(intents=intents)
+
+
+AMAZON_QUEUE_PATH = "data/amazon_product_queue.json"
+
+
+def add_to_amazon_queue(url: str) -> str:
+    """社長がDiscordで貼ったAmazon商品URLをGitHub Contents API経由でキューに
+    追加する（Amazon PA-API未承認のため、楽天のような自動選定ができない間の
+    手動キュー方式）。ワークフロー実行を待たず即時反映される。"""
+    api = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{AMAZON_QUEUE_PATH}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+    try:
+        r = requests.get(api, headers=headers, timeout=10)
+        if r.status_code == 200:
+            file_data = r.json()
+            queue = json.loads(base64.b64decode(file_data["content"]).decode("utf-8"))
+            sha = file_data["sha"]
+        elif r.status_code == 404:
+            queue, sha = [], None
+        else:
+            return f"⚠️ キュー読み込み失敗: HTTP {r.status_code}"
+    except Exception as e:
+        return f"⚠️ キュー読み込み失敗: {e}"
+
+    queue.append(url)
+    body = {
+        "message": "chore: add amazon product to queue (via Discord)",
+        "content": base64.b64encode(json.dumps(queue, ensure_ascii=False, indent=2).encode("utf-8")).decode("ascii"),
+    }
+    if sha:
+        body["sha"] = sha
+
+    try:
+        r2 = requests.put(api, headers=headers, json=body, timeout=10)
+        if r2.status_code in (200, 201):
+            return f"✅ Amazonキューに追加しました（現在{len(queue)}件待ち）\n{url[:150]}"
+        return f"⚠️ キュー追加失敗: HTTP {r2.status_code} {r2.text[:200]}"
+    except Exception as e:
+        return f"⚠️ キュー追加失敗: {e}"
 
 
 def trigger_workflow(event_type: str, payload: dict) -> bool:
@@ -130,6 +170,17 @@ async def on_message(message: discord.Message):
         await message.reply(f"🎭 HAL投稿フローを起動しました。{'テーマ: ' + theme if theme else ''}")
         return
 
+    if content.startswith("!すなくんAmazon"):
+        url = content.replace("!すなくんAmazon", "", 1).strip()
+        if not url or "amazon" not in url.lower():
+            await message.reply(
+                "使い方: `!すなくんAmazon <Amazon商品URL>`\n"
+                "例: `!すなくんAmazon https://www.amazon.co.jp/dp/B0XXXXXXX`"
+            )
+            return
+        await message.reply(add_to_amazon_queue(url))
+        return
+
     if content.startswith("!すなくん"):
         theme = content.replace("!すなくん", "").strip()
         trigger_workflow("discord-command", {"workflow": "sunakun_post", "theme": theme})
@@ -183,6 +234,7 @@ async def on_message(message: discord.Message):
             "`!朝礼` / `!ブリーフィング` — 朝礼フロー手動起動\n"
             "`!HAL [テーマ]` — HAL投稿生成\n"
             "`!すなくん [テーマ]` — すなくん投稿生成\n"
+            "`!すなくんAmazon <URL>` — Amazon商品URLを投稿キューに追加（次回投稿で優先使用）\n"
             "`!レポート` — 日次レポート手動起動\n"
             "`!承認 <ID>` / `!返信承認 <ID>` — X投稿を承認して投稿実行\n"
             "`!却下 <ID>` / `!返信スキップ <ID>` — X投稿をキャンセル\n"

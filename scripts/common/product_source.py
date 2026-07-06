@@ -19,6 +19,7 @@ AI生成テーマ投稿にフォールバックする（既存挙動を壊さな
 import json
 import pathlib
 import random
+import re
 
 import requests
 
@@ -41,6 +42,13 @@ RAKUTEN_GENRES = GADGET_GENRES + ENGINEER_FOOD_GENRES
 
 POSTED_HISTORY_PATH = pathlib.Path("data/suna_posted_products.json")
 POSTED_HISTORY_MAX = 200
+
+# 社長がDiscordで貼ったAmazon商品URLの手動キュー（PA-API未承認のため、
+# 楽天のような自動選定は不可。人間が選んだURLをFIFOで消費する）。
+# 追加は bot/discord_bot.py の !すなくんAmazon コマンド（GitHub Contents API
+# 経由）、消費はここ(pop_amazon_queue_url)で行い、ワークフロー側が
+# git commitで永続化する。
+AMAZON_QUEUE_PATH = pathlib.Path("data/amazon_product_queue.json")
 
 OUTPUT_DIR = pathlib.Path("media_out")
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -123,6 +131,95 @@ def fetch_trending_product() -> dict | None:
         "description": (item.get("itemCaption") or "")[:200],
         "item_url": item.get("itemUrl", ""),
         "affiliate_url": item.get("affiliateUrl") or item.get("itemUrl", ""),
+        "image_url": image_url,
+    }
+
+
+def load_amazon_queue() -> list[str]:
+    if not AMAZON_QUEUE_PATH.exists():
+        return []
+    try:
+        return json.loads(AMAZON_QUEUE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _save_amazon_queue(urls: list[str]) -> None:
+    AMAZON_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    AMAZON_QUEUE_PATH.write_text(json.dumps(urls, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def pop_amazon_queue_url() -> str | None:
+    """キューの先頭(最も古く追加されたURL)を取り出して削除する。空ならNone。"""
+    urls = load_amazon_queue()
+    if not urls:
+        return None
+    first, rest = urls[0], urls[1:]
+    _save_amazon_queue(rest)
+    return first
+
+
+def _extract_meta(html: str, property_name: str) -> str:
+    pattern = re.compile(
+        rf'<meta[^>]*(?:property|name)=["\']{ re.escape(property_name) }["\'][^>]*content=["\']([^"\']*)["\']',
+        re.IGNORECASE,
+    )
+    m = pattern.search(html)
+    if m:
+        return m.group(1)
+    pattern2 = re.compile(
+        rf'<meta[^>]*content=["\']([^"\']*)["\'][^>]*(?:property|name)=["\']{ re.escape(property_name) }["\']',
+        re.IGNORECASE,
+    )
+    m2 = pattern2.search(html)
+    return m2.group(1) if m2 else ""
+
+
+def scrape_amazon_product(url: str) -> dict | None:
+    """社長がDiscordで貼った実在のAmazon商品URLから、実際の商品名・画像・価格を
+    取得する。PA-API未承認（過去30日で対象売上10件が必要）のため、og:meta
+    タグの軽量スクレイピングで代用。旧GAS実装(04_suna_product_scraper.gs
+    の_scrapeAmazon)と同じ考え方をPythonに移植。
+
+    AMAZON_ASSOCIATE_TAG未設定・取得失敗時はNoneを返す
+    （呼び出し側はキューの次のURL、または既存のフォールバックへ）。"""
+    associate_tag = clean_env("AMAZON_ASSOCIATE_TAG")
+    if not associate_tag:
+        return None
+
+    try:
+        r = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=20,
+        )
+        r.raise_for_status()
+        html = r.text
+    except Exception as e:
+        print(f"[product_source] amazon page fetch failed: {e}")
+        return None
+
+    title = _extract_meta(html, "og:title")
+    image_url = _extract_meta(html, "og:image")
+    description = _extract_meta(html, "og:description")
+
+    asin_match = re.search(r"/dp/([A-Z0-9]{10})", url, re.IGNORECASE) or re.search(
+        r"/gp/product/([A-Z0-9]{10})", url, re.IGNORECASE
+    )
+    asin = asin_match.group(1) if asin_match else ""
+    if not asin or not title:
+        print(f"[product_source] amazon scrape incomplete: asin={asin!r} title={title!r}")
+        return None
+
+    affiliate_url = f"https://www.amazon.co.jp/dp/{asin}?tag={associate_tag}"
+
+    return {
+        "source": "amazon",
+        "title": title,
+        "price": "商品ページでご確認ください",  # 価格は変動が早くスクレイピング精度が低いため断定しない
+        "description": description[:200],
+        "item_url": url,
+        "affiliate_url": affiliate_url,
         "image_url": image_url,
     }
 

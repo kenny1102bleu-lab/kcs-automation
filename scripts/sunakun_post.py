@@ -18,7 +18,10 @@ from scripts.common.ng_patterns import scan as ng_scan
 from scripts.common.buzz_patterns import get_buzz_summary
 from scripts.common.engagement_loop import get_win_patterns
 from scripts.common.env_clean import clean_env
-from scripts.common.product_source import fetch_trending_product, download_product_image, record_posted_url
+from scripts.common.product_source import (
+    fetch_trending_product, download_product_image, record_posted_url,
+    pop_amazon_queue_url, scrape_amazon_product,
+)
 from scripts.common.x_limits import validate as x_validate, weighted_length, count_hashtags, truncate_to_fit
 
 # PR表記と誘導文言はAIの記憶に頼らず、コード側で必ず1段目に固定で
@@ -84,13 +87,25 @@ def run():
 
     manual_theme = os.environ.get("POST_THEME", "").strip()
     # 手動テーマ指定時はテーマ優先（既存のAI生成フローを維持）。
-    # 通常運用時は楽天ランキングAPIから実在の商品を取得し、実商品画像・
-    # 実アフィリエイトリンクで投稿する（社長指摘: AI生成の「商品風」画像ではなく実写真にすべき）。
-    product = None if manual_theme else fetch_trending_product()
+    # 通常運用時の商品ソース優先順位:
+    #   1. Amazon手動キュー（社長がDiscordで貼ったURL。PA-API未承認のため
+    #      自動選定はできないが、人間が選んだ商品を最優先で使う）
+    #   2. 楽天ランキングAPI（自動選定）
+    #   3. AIテーマ生成（フォールバック、既存挙動）
+    product = None
+    if not manual_theme:
+        amazon_url = pop_amazon_queue_url()
+        if amazon_url:
+            product = scrape_amazon_product(amazon_url)
+            if not product:
+                notify(f"⚠️ Amazonキューの商品情報取得に失敗（キューからは削除済み）: {amazon_url[:200]}")
+        if not product:
+            product = fetch_trending_product()
 
     if product:
+        source_label = "Amazon" if product["source"] == "amazon" else "楽天ランキング"
         user_message = (
-            "以下は楽天ランキングから取得した実在の商品情報です。この情報に忠実に、"
+            f"以下は{source_label}から取得した実在の商品情報です。この情報に忠実に、"
             "捏造や誇張をせずに投稿テキストを作成してください。\n"
             f"商品名: {product['title']}\n"
             f"価格: {product['price']}\n"
@@ -155,14 +170,20 @@ def run():
         notify(msg)
         return
 
+    if product and product["source"] == "amazon":
+        source_line = "🛒 商品ソース: Amazon手動キュー（社長選定・実商品・実画像・実アフィリエイトリンク）\n"
+    elif product:
+        source_line = "🛒 商品ソース: 楽天ランキングAPI（実商品・実画像・実アフィリエイトリンク）\n"
+    else:
+        source_line = "🛒 商品ソース: AIテーマ生成（実商品URLなし、画像もAI生成）\n"
+
     qa_summary = (
         "✅ 自動監査 通過済み: AI開示語 / 簡体字 / AI口調(案1･2等) / "
         "絵文字クラスタ / スパム / 個人情報\n"
         f"✅ X文字数: {weighted_length(post_text)}/280ユニット / ハッシュタグ: {count_hashtags(post_text)}個\n"
         "✅ PR表記・リプ欄誘導文言: コード側で1段目に固定挿入済み\n"
         f"✅ マモル(Claude)コンプライアンス審査: 承認（{result.get('reason','問題なし')}）\n"
-        + ("🛒 商品ソース: 楽天ランキングAPI（実商品・実画像・実アフィリエイトリンク）\n"
-           if product else "🛒 商品ソース: AIテーマ生成（実商品URLなし、画像もAI生成）\n")
+        + source_line
         + "👀 社長確認ポイント: 商品情報の正確性のみ"
     )
 
@@ -172,7 +193,8 @@ def run():
         if media.get("error"):
             qa_summary += f"\n⚠️ 実商品画像の取得に失敗（テキストのみ投稿可）: {media['error']}"
         affiliate_link = product["affiliate_url"]
-        record_posted_url(product["item_url"])
+        if product["source"] == "rakuten":
+            record_posted_url(product["item_url"])
     else:
         media = generate_media(parsed["media_type"], parsed["media_prompt"], account="SUNAKUN")
         if media.get("error"):

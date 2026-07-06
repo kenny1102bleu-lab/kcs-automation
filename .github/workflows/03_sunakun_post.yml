@@ -36,6 +36,7 @@ jobs:
           RAKUTEN_APP_ID: ${{ secrets.RAKUTEN_APP_ID }}
           RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
           RAKUTEN_AFFILIATE_ID: ${{ secrets.RAKUTEN_AFFILIATE_ID }}
+          AMAZON_ASSOCIATE_TAG: ${{ secrets.AMAZON_ASSOCIATE_TAG }}
           SUNAKUN_TWITTER_API_KEY: ${{ secrets.SUNAKUN_TWITTER_API_KEY }}
           SUNAKUN_TWITTER_API_SECRET: ${{ secrets.SUNAKUN_TWITTER_API_SECRET }}
           SUNAKUN_TWITTER_ACCESS_TOKEN: ${{ secrets.SUNAKUN_TWITTER_ACCESS_TOKEN }}
@@ -50,14 +51,14 @@ jobs:
           path: media_out/
           retention-days: 1
           if-no-files-found: ignore
-      - name: Commit posted-products history
+      - name: Commit posted-products history and amazon queue state
         if: always()
         run: |
-          if [ -n "$(git status --porcelain data/suna_posted_products.json 2>/dev/null)" ]; then
+          if [ -n "$(git status --porcelain data/suna_posted_products.json data/amazon_product_queue.json 2>/dev/null)" ]; then
             git config user.email "suna-bot@kcs.local"
             git config user.name "Suna Bot"
-            git add data/suna_posted_products.json
-            git commit -m "chore: update suna posted-products history"
+            git add data/suna_posted_products.json data/amazon_product_queue.json
+            git commit -m "chore: update suna posted-products history / amazon queue"
             git pull --rebase origin master
             git push origin HEAD:master
           fi
