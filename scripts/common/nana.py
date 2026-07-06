@@ -86,6 +86,41 @@ PRIVATE_COMPOSITION = (
 )
 
 
+def _current_time_context() -> str:
+    """JST（東京）の実際の日付・時間から季節と時間帯を判定し、
+    服装や背景の明暗を実際の日時に合わせるための指示文を返す。"""
+    now_jst = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9)))
+    month, hour = now_jst.month, now_jst.hour
+
+    if month in (3, 4, 5):
+        season = "spring (March-May), mild weather - light cardigans, knitwear, or light jackets"
+    elif month in (6, 7, 8):
+        season = "summer (June-August), hot weather - short sleeves, light/thin clothing"
+    elif month in (9, 10, 11):
+        season = "autumn (September-November), cool weather - knitwear, light coats"
+    else:
+        season = "winter (December-February), cold weather - coats, mufflers, warm layers"
+
+    if 5 <= hour < 9:
+        time_of_day = "early morning, soft morning sunlight, few people around"
+    elif 9 <= hour < 16:
+        time_of_day = "daytime, bright natural sunlight, blue sky if outdoors"
+    elif 16 <= hour < 19:
+        time_of_day = "evening golden hour, warm orange sunset light"
+    elif 19 <= hour < 23:
+        time_of_day = "night, warm artificial indoor lighting if indoors, dark sky and street lights if outdoors"
+    else:
+        time_of_day = "late night, dark and calm atmosphere, only dim indoor ambient lighting"
+
+    return (
+        f"Current real-world date/time context (Tokyo/JST, {now_jst.strftime('%Y-%m-%d %H:%M')}): "
+        f"season is {season}; time of day is {time_of_day}. "
+        "The clothing and the background lighting/brightness in the generated image/video MUST "
+        "realistically match this season and time of day. Do not show mismatched weather, "
+        "clothing, or lighting (e.g. no summer clothes in winter, no bright daylight at night)."
+    )
+
+
 def generate_media(media_type: str, prompt: str, account: str, photo_context: str = "private") -> dict:
     media_type = (media_type or "none").lower()
     if media_type == "none" or not prompt:
@@ -93,7 +128,8 @@ def generate_media(media_type: str, prompt: str, account: str, photo_context: st
 
     base_style = HAL_BASE_STYLE if account.upper() == "HAL" else SUNAKUN_BASE_STYLE
     composition = WORK_COMPOSITION if photo_context == "work" else PRIVATE_COMPOSITION
-    full_prompt = f"{prompt}. Style: {base_style}. {composition}"
+    time_context = _current_time_context()
+    full_prompt = f"{prompt}. Style: {base_style}. {composition}. {time_context}"
 
     if media_type == "video":
         max_video = int(os.environ.get("MAX_VIDEO_PER_MONTH", "10"))
