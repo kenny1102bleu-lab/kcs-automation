@@ -92,6 +92,12 @@ def _generate_image(prompt: str, account: str) -> dict:
             parts = data["candidates"][0]["content"]["parts"]
             img_b64 = next(p["inlineData"]["data"] for p in parts if "inlineData" in p)
         except Exception as e:
+            body = ""
+            try:
+                body = r.text[:500]
+            except Exception:
+                pass
+            print(f"[nana] image gen failed: {e} | response_body={body}")
             return {"path": "", "type": "image", "error": f"gen_failed: {e}"}
 
         ts = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")

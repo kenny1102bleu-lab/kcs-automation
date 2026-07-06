@@ -98,6 +98,8 @@ def run():
     )
 
     media = generate_media(parsed["media_type"], parsed["media_prompt"], account="SUNAKUN")
+    if media.get("error"):
+        qa_summary += f"\n⚠️ メディア生成失敗（テキストのみ投稿可）: {media['error']}"
 
     approval_id = str(uuid.uuid4())[:8]
     media_path = media.get("path", "")
