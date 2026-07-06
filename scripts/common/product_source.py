@@ -175,11 +175,36 @@ def _extract_meta(html: str, property_name: str) -> str:
     return m2.group(1) if m2 else ""
 
 
+def _extract_amazon_title(html: str) -> str:
+    m = re.search(r'<span[^>]*id=["\']productTitle["\'][^>]*>(.*?)</span>', html, re.DOTALL)
+    return re.sub(r"<[^>]+>", "", m.group(1)).strip() if m else ""
+
+
+def _extract_amazon_image(html: str) -> str:
+    """Amazon商品ページにはog:imageが無いため(実地検証済み)、
+    id="imgTagWrapperId" 直下の<img>から取得する。data-old-hiresがあれば
+    そちらを優先し、無ければsrcのサイズ指定サフィックス(._AC_SY300_..._)を
+    除去して原寸大画像URLにする。"""
+    wrapper = re.search(r'id=["\']imgTagWrapperId["\'][^>]*>\s*<img([^>]*)>', html, re.DOTALL)
+    if not wrapper:
+        return ""
+    img_tag = wrapper.group(1)
+    hires = re.search(r'data-old-hires=["\']([^"\']+)["\']', img_tag)
+    if hires and hires.group(1):
+        return hires.group(1)
+    src = re.search(r'src=["\']([^"\']+)["\']', img_tag)
+    if not src:
+        return ""
+    return re.sub(r"\._[A-Z0-9,_]+_\.", ".", src.group(1))
+
+
 def scrape_amazon_product(url: str) -> dict | None:
-    """社長がDiscordで貼った実在のAmazon商品URLから、実際の商品名・画像・価格を
-    取得する。PA-API未承認（過去30日で対象売上10件が必要）のため、og:meta
-    タグの軽量スクレイピングで代用。旧GAS実装(04_suna_product_scraper.gs
-    の_scrapeAmazon)と同じ考え方をPythonに移植。
+    """社長がDiscordで貼った実在のAmazon商品URLから、実際の商品名・画像を
+    取得する。PA-API未承認（過去30日で対象売上10件が必要、実地確認済み未達）
+    のため、軽量スクレイピングで代用。Amazon商品ページにはog:title/og:image
+    が存在しないことを実際に確認したため、productTitle span要素と
+    imgTagWrapperId配下のimg要素から抽出する（旧GAS実装
+    04_suna_product_scraper.gs の_scrapeAmazonと同じ発想をPythonに移植）。
 
     AMAZON_ASSOCIATE_TAG未設定・取得失敗時はNoneを返す
     （呼び出し側はキューの次のURL、または既存のフォールバックへ）。"""
@@ -199,8 +224,8 @@ def scrape_amazon_product(url: str) -> dict | None:
         print(f"[product_source] amazon page fetch failed: {e}")
         return None
 
-    title = _extract_meta(html, "og:title")
-    image_url = _extract_meta(html, "og:image")
+    title = _extract_amazon_title(html)
+    image_url = _extract_amazon_image(html)
     description = _extract_meta(html, "og:description")
 
     asin_match = re.search(r"/dp/([A-Z0-9]{10})", url, re.IGNORECASE) or re.search(
