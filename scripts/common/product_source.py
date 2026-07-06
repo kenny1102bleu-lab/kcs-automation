@@ -215,7 +215,19 @@ def scrape_amazon_product(url: str) -> dict | None:
     try:
         r = requests.get(
             url,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Referer": "https://www.google.com/",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "cross-site",
+            },
             timeout=20,
         )
         r.raise_for_status()
@@ -223,6 +235,11 @@ def scrape_amazon_product(url: str) -> dict | None:
     except Exception as e:
         print(f"[product_source] amazon page fetch failed: {e}")
         return None
+
+    # GitHub Actionsのデータセンターipではロボット検知/簡易ページを
+    # 返されることがある（実地確認済み）。判別できるよう明示的にログする。
+    if "productTitle" not in html and ("captcha" in html.lower() or "robot" in html.lower() or "api-services-support" in html.lower()):
+        print("[product_source] amazon likely blocked this request (bot detection page returned)")
 
     title = _extract_amazon_title(html)
     image_url = _extract_amazon_image(html)
