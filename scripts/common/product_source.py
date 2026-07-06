@@ -7,6 +7,12 @@ n8n/Make.com時代のアーキテクチャ用でGitHub Actions移行時に引き
 現行のsunakun_post.pyはAI生成の商品「風」画像を使っていた
 （実商品ではないため社長指摘で本モジュールを新設）。
 
+2026年2月の楽天API刷新（旧 app.rakuten.co.jp エンドポイントは廃止）に伴い、
+新エンドポイント(openapi.rakuten.co.jp)・新認証(applicationId+accessKey+
+Referer/Originヘッダー必須)に対応。旧GAS実装のジャンルIDは検証の結果
+そもそも誤り（例:「スマホ」のつもりのIDが実際は下着・ナイトウェアだった）
+だったため、実際に楽天ジャンル検索APIで確認し直した正しいIDに置き換えた。
+
 fetch_trending_product() が None を返した場合、呼び出し側は既存の
 AI生成テーマ投稿にフォールバックする（既存挙動を壊さない）。
 """
@@ -18,8 +24,20 @@ import requests
 
 from scripts.common.env_clean import clean_env
 
-# PC周辺, スマホ, ゲーム, 家電（旧GAS実装から踏襲）
-RAKUTEN_GADGET_GENRES = ["100371", "100433", "562637", "211742"]
+RANKING_API_URL = "https://openapi.rakuten.co.jp/ichibaranking/api/IchibaItem/Ranking/20220601"
+
+# API利用登録アプリ「KCS収集トレンド」の許可ウェブサイトが google.com のため、
+# Referer/Originもこれに合わせる必要がある（変更する場合は要連動）。
+API_REFERER = "https://google.com"
+
+# ガジェット系（パソコン・周辺機器/スマートフォン・タブレット/テレビゲーム/家電/TV・オーディオ・カメラ）
+GADGET_GENRES = ["100026", "564500", "101205", "562637", "211742"]
+
+# エンジニア向け食品・飲料系（コーヒー/スナック菓子/栄養補助スナック/ラーメン）
+# 社長指示: ガジェットだけでなく、こちらも投稿できるようにする
+ENGINEER_FOOD_GENRES = ["100356", "562625", "566807", "110487"]
+
+RAKUTEN_GENRES = GADGET_GENRES + ENGINEER_FOOD_GENRES
 
 POSTED_HISTORY_PATH = pathlib.Path("data/suna_posted_products.json")
 POSTED_HISTORY_MAX = 200
@@ -48,29 +66,32 @@ def record_posted_url(url: str) -> None:
 
 
 def fetch_trending_product() -> dict | None:
-    """楽天ランキングAPIからガジェット系カテゴリの商品をランダムに1件取得。
-    RAKUTEN_APP_ID未設定・API失敗・全件投稿済みの場合はNone
-    （呼び出し側は既存のAI生成テーマ投稿にフォールバック）。"""
+    """楽天ランキングAPIからガジェット系/エンジニア食品系カテゴリの商品を
+    ランダムに1件取得。RAKUTEN_APP_ID/RAKUTEN_ACCESS_KEY未設定・API失敗・
+    全件投稿済みの場合はNone（呼び出し側は既存のAI生成テーマ投稿にフォールバック）。"""
     app_id = clean_env("RAKUTEN_APP_ID")
-    if not app_id:
+    access_key = clean_env("RAKUTEN_ACCESS_KEY")
+    if not app_id or not access_key:
         return None
 
     affiliate_id = clean_env("RAKUTEN_AFFILIATE_ID")
     posted = _load_posted_urls()
-    genre_id = random.choice(RAKUTEN_GADGET_GENRES)
+    genre_id = random.choice(RAKUTEN_GENRES)
 
     params = {
         "format": "json",
         "genreId": genre_id,
         "applicationId": app_id,
+        "accessKey": access_key,
     }
     if affiliate_id:
         params["affiliateId"] = affiliate_id
 
     try:
         r = requests.get(
-            "https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601",
+            RANKING_API_URL,
             params=params,
+            headers={"Referer": API_REFERER, "Origin": API_REFERER},
             timeout=15,
         )
         r.raise_for_status()

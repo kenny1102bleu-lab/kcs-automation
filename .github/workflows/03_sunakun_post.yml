@@ -34,6 +34,7 @@ jobs:
           MAX_VIDEO_PER_MONTH: '10'
           POST_THEME: ${{ inputs.theme }}
           RAKUTEN_APP_ID: ${{ secrets.RAKUTEN_APP_ID }}
+          RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
           RAKUTEN_AFFILIATE_ID: ${{ secrets.RAKUTEN_AFFILIATE_ID }}
           SUNAKUN_TWITTER_API_KEY: ${{ secrets.SUNAKUN_TWITTER_API_KEY }}
           SUNAKUN_TWITTER_API_SECRET: ${{ secrets.SUNAKUN_TWITTER_API_SECRET }}
