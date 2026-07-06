@@ -126,10 +126,14 @@ def generate_media(media_type: str, prompt: str, account: str, photo_context: st
     if media_type == "none" or not prompt:
         return {"path": "", "type": "none"}
 
-    base_style = HAL_BASE_STYLE if account.upper() == "HAL" else SUNAKUN_BASE_STYLE
-    composition = WORK_COMPOSITION if photo_context == "work" else PRIVATE_COMPOSITION
+    is_hal = account.upper() == "HAL"
+    base_style = HAL_BASE_STYLE if is_hal else SUNAKUN_BASE_STYLE
+    # 構図（仕事/自撮り）の出し分けは人物の自撮り/他撮りが意味を持つHALのみ。
+    # すなくんは商品写真スタイルのため、人物代名詞を含むこの指示は混入させない。
+    composition = (WORK_COMPOSITION if photo_context == "work" else PRIVATE_COMPOSITION) if is_hal else ""
     time_context = _current_time_context()
-    full_prompt = f"{prompt}. Style: {base_style}. {composition}. {time_context}"
+    segments = [prompt, f"Style: {base_style}"] + ([composition] if composition else []) + [time_context]
+    full_prompt = ". ".join(segments)
 
     if media_type == "video":
         max_video = int(os.environ.get("MAX_VIDEO_PER_MONTH", "10"))
