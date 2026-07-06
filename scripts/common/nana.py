@@ -68,13 +68,28 @@ def _record_video_use():
         f.write(datetime.datetime.utcnow().isoformat() + "\n")
 
 
-def generate_media(media_type: str, prompt: str, account: str) -> dict:
+WORK_COMPOSITION = (
+    "Composition: photographed BY SOMEONE ELSE (a photographer/staff member), "
+    "third-person candid photography angle, she is NOT holding a phone or camera, "
+    "natural professional photography framing, medium or full shot showing her "
+    "interacting with the environment, no visible selfie arm."
+)
+PRIVATE_COMPOSITION = (
+    "Composition: a SELFIE taken by herself on her smartphone, close-up "
+    "front-camera selfie angle, her arm/hand may be visible near the edge of "
+    "frame holding the phone, slightly elevated or eye-level selfie perspective, "
+    "casual intimate framing typical of a personal phone selfie."
+)
+
+
+def generate_media(media_type: str, prompt: str, account: str, photo_context: str = "private") -> dict:
     media_type = (media_type or "none").lower()
     if media_type == "none" or not prompt:
         return {"path": "", "type": "none"}
 
     base_style = HAL_BASE_STYLE if account.upper() == "HAL" else SUNAKUN_BASE_STYLE
-    full_prompt = f"{prompt}. Style: {base_style}"
+    composition = WORK_COMPOSITION if photo_context == "work" else PRIVATE_COMPOSITION
+    full_prompt = f"{prompt}. Style: {base_style}. {composition}"
 
     if media_type == "video":
         max_video = int(os.environ.get("MAX_VIDEO_PER_MONTH", "10"))

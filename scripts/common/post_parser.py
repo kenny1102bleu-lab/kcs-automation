@@ -1,5 +1,5 @@
 """
-ユキ/タクミの生成出力を {post_text, media_type, media_prompt} にパース。
+ユキ/タクミの生成出力を {post_text, media_type, media_prompt, photo_context} にパース。
 JSONで来たらそのまま、生テキストならフォールバック。
 """
 import json
@@ -14,11 +14,15 @@ def parse(raw: str) -> dict:
     try:
         obj = json.loads(s)
         if isinstance(obj, dict) and "post_text" in obj:
+            photo_context = obj.get("photo_context", "private") or "private"
+            if photo_context not in ("work", "private"):
+                photo_context = "private"
             return {
                 "post_text": str(obj.get("post_text", "")).strip(),
                 "media_type": obj.get("media_type", "none") or "none",
                 "media_prompt": obj.get("media_prompt", "") or "",
+                "photo_context": photo_context,
             }
     except Exception:
         pass
-    return {"post_text": s, "media_type": "none", "media_prompt": ""}
+    return {"post_text": s, "media_type": "none", "media_prompt": "", "photo_context": "private"}
