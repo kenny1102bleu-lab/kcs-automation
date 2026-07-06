@@ -26,4 +26,8 @@ def review(post_text: str) -> dict:
         text = text.split("```")[1].strip()
         if text.startswith("json"):
             text = text[4:].strip()
-    return json.loads(text)
+    # Claudeの応答にJSON本体の後へ余分な説明文が続くことがあるため、
+    # json.loads()（"Extra data"エラーで落ちる）ではなくraw_decode()で
+    # 先頭の有効なJSONオブジェクトだけを取り出し、末尾の余分な文字列は無視する。
+    obj, _ = json.JSONDecoder().raw_decode(text)
+    return obj
