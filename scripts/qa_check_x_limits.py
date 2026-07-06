@@ -11,7 +11,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from scripts.common.x_limits import weighted_length, count_hashtags, validate
+from scripts.common.x_limits import weighted_length, count_hashtags, validate, truncate_to_fit
 
 CASES = [
     ("半角英数字+ハッシュタグ3個で280以内", "a" * 260 + " #a #b #c", None, True),
@@ -48,8 +48,24 @@ HASHTAG_CASES = [
 ]
 
 
+TRUNCATE_CASES = [
+    ("既に収まっている場合は無変更", "あ" * 50, 280, "あ" * 50),
+    ("超過分は末尾を…で切り詰め", "あ" * 200, 100, None),  # 内容は都度検証、境界のみ確認
+]
+
+
 def run() -> int:
     failures = []
+
+    for desc, text, max_units, expected in TRUNCATE_CASES:
+        result = truncate_to_fit(text, max_units)
+        wlen = weighted_length(result)
+        within_budget = wlen <= max_units
+        matches_expected = expected is None or result == expected
+        status = "OK" if within_budget and matches_expected else "FAIL"
+        print(f"[{status}] {desc}: weighted={wlen} (<= {max_units}) result={result[:30]}...")
+        if status == "FAIL":
+            failures.append(desc)
 
     for desc, text, expected_wlen, expected_ok in CASES:
         wlen = weighted_length(text)
@@ -69,7 +85,7 @@ def run() -> int:
         if status == "FAIL":
             failures.append(desc)
 
-    total = len(CASES) + len(HASHTAG_CASES)
+    total = len(CASES) + len(HASHTAG_CASES) + len(TRUNCATE_CASES)
     print(f"\n{total - len(failures)}/{total} passed")
     if failures:
         print("FAILED:", ", ".join(failures))

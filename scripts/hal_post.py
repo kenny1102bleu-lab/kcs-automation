@@ -13,11 +13,11 @@ import google.generativeai as genai
 from scripts.common.mamoru import review
 from scripts.common.discord_notify import notify, notify_post_preview
 from scripts.common.news_pool import fetch_theme, format_theme_prompt
-from scripts.common.post_parser import parse as parse_post, assemble_post
+from scripts.common.post_parser import parse as parse_post, assemble_post, format_hashtags
 from scripts.common.nana import generate_media
 from scripts.common.ng_patterns import scan as ng_scan
 from scripts.common.env_clean import clean_env
-from scripts.common.x_limits import validate as x_validate, weighted_length, count_hashtags
+from scripts.common.x_limits import validate as x_validate, weighted_length, count_hashtags, truncate_to_fit
 
 YUKI_PROMPT = """あなたはKCS合同会社のタレント専属ディレクター「ユキ」です。
 SNS女性タレント「HAL（ハル）」の投稿テキストを作成します。
@@ -98,7 +98,13 @@ def run():
             return
 
     # 1段目(日本語+繁体字、マモル審査済み) + 2段目(ハッシュタグ) を組み立てる。
-    post_text = assemble_post(main_content, parsed["hashtags"])
+    # AI生成本文が文字数目安を守れないケースが繰り返し発生したため、
+    # プロンプト頼みにせず、ハッシュタグ分を差し引いた残り予算に本文を
+    # 安全に切り詰めてから組み立てる。
+    tag_line = format_hashtags(parsed["hashtags"])
+    hashtag_overhead = (weighted_length("\n\n") + weighted_length(tag_line)) if tag_line else 0
+    safe_content = truncate_to_fit(main_content, 280 - hashtag_overhead)
+    post_text = assemble_post(safe_content, parsed["hashtags"])
 
     # X文字数・ハッシュタグ数チェック（全角文字は2ユニット換算の実際の上限280で検証）
     x_ok, x_reason = x_validate(post_text)

@@ -12,14 +12,14 @@ import google.generativeai as genai
 from scripts.common.mamoru import review
 from scripts.common.discord_notify import notify, notify_post_preview
 from scripts.common.news_pool import fetch_theme, format_theme_prompt
-from scripts.common.post_parser import parse as parse_post, assemble_post
+from scripts.common.post_parser import parse as parse_post, assemble_post, format_hashtags
 from scripts.common.nana import generate_media
 from scripts.common.ng_patterns import scan as ng_scan
 from scripts.common.buzz_patterns import get_buzz_summary
 from scripts.common.engagement_loop import get_win_patterns
 from scripts.common.env_clean import clean_env
 from scripts.common.product_source import fetch_trending_product, download_product_image, record_posted_url
-from scripts.common.x_limits import validate as x_validate, weighted_length, count_hashtags
+from scripts.common.x_limits import validate as x_validate, weighted_length, count_hashtags, truncate_to_fit
 
 # PR表記と誘導文言はAIの記憶に頼らず、コード側で必ず1段目に固定で
 # 差し込む（AIが省略することがあったため確実性を優先）。
@@ -127,7 +127,16 @@ def run():
 
     # マモル審査を通過した本文に、コード側で固定PR表記・誘導文言・ハッシュタグを
     # 組み立てる（1段目=本文+PR+誘導文言、2段目=ハッシュタグ）。
-    block1 = f"{SUNAKUN_PR_PREFIX}{main_content}\n{SUNAKUN_CTA}"
+    # AI生成本文がプロンプトの文字数目安を守れないケースが繰り返し発生した
+    # ため、プロンプト頼みにせず、PR表記・誘導文言・ハッシュタグの固定分を
+    # 差し引いた残り予算に本文を安全に切り詰めてから組み立てる。
+    tag_line = format_hashtags(parsed["hashtags"])
+    fixed_overhead = (
+        weighted_length(SUNAKUN_PR_PREFIX) + weighted_length("\n") + weighted_length(SUNAKUN_CTA)
+        + (weighted_length("\n\n") + weighted_length(tag_line) if tag_line else 0)
+    )
+    safe_content = truncate_to_fit(main_content, 280 - fixed_overhead)
+    block1 = f"{SUNAKUN_PR_PREFIX}{safe_content}\n{SUNAKUN_CTA}"
     post_text = assemble_post(block1, parsed["hashtags"])
 
     # X文字数・ハッシュタグ数チェック（全角文字は2ユニット換算の実際の上限280で検証）

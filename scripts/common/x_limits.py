@@ -44,6 +44,23 @@ def count_hashtags(text: str) -> int:
     return len(re.findall(r"#[^\s#]+", text))
 
 
+def truncate_to_fit(text: str, max_units: int = MAX_WEIGHTED_LENGTH) -> str:
+    """weighted_lengthがmax_units以内になるよう末尾から切り詰め、
+    切り詰めた場合は「…」を付与する。GAS側のsliceTwitterText()と同じ考え方
+    （AI生成本文が文字数目安を守れないケースが繰り返し発生したため、
+    プロンプト頼みではなくコード側で確実に上限内へ収める安全策）。"""
+    if weighted_length(text) <= max_units:
+        return text
+    target = max_units - weighted_length("…")
+    result = ""
+    for ch in text:
+        candidate = result + ch
+        if weighted_length(candidate) > target:
+            break
+        result = candidate
+    return result + "…"
+
+
 def validate(text: str) -> tuple[bool, str]:
     """(ok, reason) を返す。okがFalseなら理由をreasonに入れる。"""
     wlen = weighted_length(text)
