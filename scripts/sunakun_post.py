@@ -113,19 +113,25 @@ def run():
         if attempt == 0 and "fixed_text" in result:
             post_text = result["fixed_text"]
         else:
-            notify(f"⚠️ すなくん投稿がマモル審査を通過できませんでした。\n理由: {result['reason']}")
+            msg = f"⚠️ すなくん投稿がマモル審査を通過できませんでした。\n理由: {result['reason']}\n投稿テキスト: {post_text[:300]}"
+            print(msg)
+            notify(msg)
             return
 
     # X文字数・ハッシュタグ数チェック（全角文字は2ユニット換算の実際の上限280で検証）
     x_ok, x_reason = x_validate(post_text)
     if not x_ok:
-        notify(f"⚠️ すなくん投稿がX文字数/ハッシュタグルールを満たせませんでした。\n理由: {x_reason}\n投稿テキスト: {post_text[:200]}")
+        msg = f"⚠️ すなくん投稿がX文字数/ハッシュタグルールを満たせませんでした。\n理由: {x_reason}\n投稿テキスト: {post_text[:300]}"
+        print(msg)
+        notify(msg)
         return
 
     # NGパターン最終監査
     ng = ng_scan(post_text, exclude=["body_url_direct"])  # すなくんは[LINK]プレースホルダ許容
     if ng:
-        notify(f"⚠️ すなくん投稿NG監査拒否: {ng[0]} = `{ng[1]}`\n投稿テキスト: {post_text[:200]}")
+        msg = f"⚠️ すなくん投稿NG監査拒否: {ng[0]} = `{ng[1]}`\n投稿テキスト: {post_text[:300]}"
+        print(msg)
+        notify(msg)
         return
 
     qa_summary = (
