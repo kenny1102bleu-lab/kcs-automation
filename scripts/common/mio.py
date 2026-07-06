@@ -16,7 +16,7 @@ import base64
 import pathlib
 import requests
 
-from scripts.common.env_clean import clean_env
+from scripts.common.env_clean import clean_env, redact_key
 
 
 CRITERIA = {
@@ -80,4 +80,4 @@ def inspect_media(image_path: str, account: str) -> dict:
         }
     except Exception as e:
         # 検品エラー時は安全側で通す（ナナの再試行ループ無限化を防ぐ）
-        return {"approved": True, "score": 50, "reason": f"mio_error: {e}"}
+        return {"approved": True, "score": 50, "reason": f"mio_error: {redact_key(e)}"}

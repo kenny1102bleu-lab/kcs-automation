@@ -13,7 +13,7 @@ import pathlib
 import requests
 
 from scripts.common.mio import inspect_media
-from scripts.common.env_clean import clean_env
+from scripts.common.env_clean import clean_env, redact_key
 
 OUTPUT_DIR = pathlib.Path("media_out")
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -32,6 +32,9 @@ SUNAKUN_BASE_STYLE = (
 
 def _api_key():
     return clean_env("GEMINI_API_KEY")
+
+
+_redact = redact_key
 
 
 def _video_usage_path():
@@ -92,13 +95,14 @@ def _generate_image(prompt: str, account: str) -> dict:
             parts = data["candidates"][0]["content"]["parts"]
             img_b64 = next(p["inlineData"]["data"] for p in parts if "inlineData" in p)
         except Exception as e:
+            safe_err = _redact(e)
             body = ""
             try:
-                body = r.text[:500]
+                body = _redact(r.text[:500])
             except Exception:
                 pass
-            print(f"[nana] image gen failed: {e} | response_body={body}")
-            return {"path": "", "type": "image", "error": f"gen_failed: {e}"}
+            print(f"[nana] image gen failed: {safe_err} | response_body={body}")
+            return {"path": "", "type": "image", "error": f"gen_failed: {safe_err}"}
 
         ts = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         path = OUTPUT_DIR / f"{account}_{ts}_a{attempt}.png"
@@ -133,7 +137,7 @@ def _generate_video(prompt: str, account: str) -> dict:
         r.raise_for_status()
         op_name = r.json()["name"]
     except Exception as e:
-        return {"path": "", "type": "video", "error": f"veo_create_failed: {e}"}
+        return {"path": "", "type": "video", "error": f"veo_create_failed: {_redact(e)}"}
 
     # ポーリング（最大6分）
     poll_url = f"https://generativelanguage.googleapis.com/v1beta/{op_name}"
@@ -154,5 +158,5 @@ def _generate_video(prompt: str, account: str) -> dict:
                 _record_video_use()
                 return {"path": str(path), "type": "video"}
         except Exception as e:
-            print(f"[nana] poll error: {e}")
+            print(f"[nana] poll error: {_redact(e)}")
     return {"path": "", "type": "video", "error": "veo_timeout"}
