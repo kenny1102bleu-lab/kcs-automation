@@ -8,6 +8,8 @@ import os
 import tweepy
 import google.generativeai as genai
 
+from scripts.common.env_clean import clean_env
+
 
 WIN_PATTERN_PROMPT = """あなたはSNS運用アナリストです。
 渡された投稿リストとそのエンゲージメント数値から、勝ちパターンと負けパターンを抽出します。
@@ -22,16 +24,16 @@ WIN_PATTERN_PROMPT = """あなたはSNS運用アナリストです。
 def _x_client(account: str) -> tweepy.Client | None:
     """OAuth1優先、なければBearer。両方なければNone。"""
     prefix = account.upper()
-    ck = os.environ.get(f"{prefix}_TWITTER_API_KEY")
-    cs = os.environ.get(f"{prefix}_TWITTER_API_SECRET")
-    at = os.environ.get(f"{prefix}_TWITTER_ACCESS_TOKEN")
-    ats = os.environ.get(f"{prefix}_TWITTER_ACCESS_SECRET")
+    ck = clean_env(f"{prefix}_TWITTER_API_KEY")
+    cs = clean_env(f"{prefix}_TWITTER_API_SECRET")
+    at = clean_env(f"{prefix}_TWITTER_ACCESS_TOKEN")
+    ats = clean_env(f"{prefix}_TWITTER_ACCESS_SECRET")
     if ck and cs and at and ats:
         return tweepy.Client(
             consumer_key=ck, consumer_secret=cs,
             access_token=at, access_token_secret=ats,
         )
-    bearer = os.environ.get(f"{prefix}_TWITTER_BEARER_TOKEN") or os.environ.get("X_BEARER_TOKEN")
+    bearer = clean_env(f"{prefix}_TWITTER_BEARER_TOKEN") or clean_env("X_BEARER_TOKEN")
     if bearer:
         return tweepy.Client(bearer_token=bearer)
     return None
