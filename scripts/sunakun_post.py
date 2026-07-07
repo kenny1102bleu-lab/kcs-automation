@@ -23,6 +23,7 @@ from scripts.common.product_source import (
     pop_amazon_queue_url, scrape_amazon_product,
 )
 from scripts.common.x_limits import validate as x_validate, weighted_length, count_hashtags, truncate_to_fit
+from scripts.common.date_context import current_season_text
 
 # PR表記と誘導文言はAIの記憶に頼らず、コード側で必ず1段目に固定で
 # 差し込む（AIが省略することがあったため確実性を優先）。
@@ -118,6 +119,7 @@ def run():
     else:
         theme = fetch_theme("sunakun")
         user_message = format_theme_prompt(theme, "本日のテーマ: 最新のコスパ最強ガジェット\nすなくんの投稿テキストを作成してください。")
+    user_message += "\n" + current_season_text()
     response = model.generate_content(user_message)
     parsed = parse_post(response.text)
 

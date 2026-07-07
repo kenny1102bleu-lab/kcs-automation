@@ -18,6 +18,7 @@ from scripts.common.nana import generate_media
 from scripts.common.ng_patterns import scan as ng_scan
 from scripts.common.env_clean import clean_env
 from scripts.common.x_limits import validate as x_validate, weighted_length, count_hashtags, truncate_to_fit
+from scripts.common.date_context import current_season_text
 
 YUKI_PROMPT = """あなたはKCS合同会社のタレント専属ディレクター「ユキ」です。
 SNS女性タレント「HAL（ハル）」の投稿テキストを作成します。
@@ -77,6 +78,7 @@ def run():
     else:
         theme = fetch_theme("hal")
         user_message = format_theme_prompt(theme, "本日のテーマ: 今日のコーデや気分\nHALの投稿テキストを作成してください。")
+    user_message += "\n" + current_season_text()
     response = model.generate_content(user_message)
     parsed = parse_post(response.text)
 
