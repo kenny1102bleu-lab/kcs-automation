@@ -156,7 +156,9 @@ def run():
     if bot_webhook:
         try:
             import requests
-            requests.post(bot_webhook, json={"approval_id": approval_id, **pending}, timeout=10)
+            # Render無料枠はアイドル後スリープし、起床に50秒以上かかることがある。
+            # 10秒だと起床待ちでタイムアウトし、登録が黙って失敗する事故があったため延長。
+            requests.post(bot_webhook, json={"approval_id": approval_id, **pending}, timeout=60)
         except Exception as e:
             print(f"bot webhook failed: {e}")
 
