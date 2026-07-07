@@ -10,6 +10,7 @@ X(Twitter) クライアント。
 DISCORD_WEBHOOK_URL(S) / GEMINI_API_KEY で既に発生した同じ原因のバグが
 ここにも残っていたため2026-07-08に修正）。
 """
+import os
 import tweepy
 
 from scripts.common.env_clean import clean_env
