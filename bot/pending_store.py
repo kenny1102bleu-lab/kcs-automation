@@ -51,6 +51,7 @@ class PendingStore:
 
     def _save(self):
         if not self.token:
+            print("[pending_store] save skipped: GH_PAT not set", flush=True)
             return
         body = json.dumps(self._cache, ensure_ascii=False)
         try:
@@ -61,6 +62,8 @@ class PendingStore:
                     json={"files": {GIST_FILENAME: {"content": body}}},
                     timeout=10,
                 )
+                if r.status_code != 200:
+                    print(f"[pending_store] gist update failed: HTTP {r.status_code} {r.text[:200]}", flush=True)
             else:
                 r = requests.post(
                     GIST_API,
@@ -75,6 +78,8 @@ class PendingStore:
                 if r.status_code == 201:
                     self.gist_id = r.json()["id"]
                     print(f"[pending_store] created gist {self.gist_id} — register PENDING_GIST_ID env var to persist across restarts", flush=True)
+                else:
+                    print(f"[pending_store] gist create failed: HTTP {r.status_code} {r.text[:200]}", flush=True)
         except Exception as e:
             print(f"[pending_store] save failed: {e}", flush=True)
 

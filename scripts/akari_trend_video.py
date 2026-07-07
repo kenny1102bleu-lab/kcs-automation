@@ -1,8 +1,10 @@
 """
-WF-XX: アカリ トレンド要約動画（HyperFrames経由）
+WF-09: アカリ トレンド要約動画（HyperFrames経由）
 
-アカリはトレンドアナリスト。news_pool等から集めたトレンドをカード型動画にして
-Discord/YouTube/Xに展開する。
+アカリはプロデューサー。Cowork(情報収集エージェント)がPending_Newsに集めた
+ニュース/トレンドを読み、エージェントごと(HAL/すなくん)にその声で台本を
+書き、実制作は「レン」スタッフに引き渡す。台本を書くところまでがアカリの
+仕事で、レンダリングそのものはレンの担当。
 """
 from __future__ import annotations
 
@@ -22,21 +24,29 @@ except Exception:
 
 from scripts.common.claude_client import call_claude
 from scripts.common.discord_notify import notify
-from scripts.common.hyperframes_runner import dispatch_render
+from scripts.common.ren import produce_video
+from scripts.common.env_clean import clean_env
 
+import requests
 
-AKARI_PROMPT = """あなたはKCS合同会社のトレンドアナリスト「アカリ」です。
-本日のトレンドを15秒の横型カード動画用に要約します。
+AKARI_PROMPT = """あなたはKCS合同会社のプロデューサー「アカリ」です。
+渡されたニュース1件をもとに、指定されたエージェント本人の口調で
+15秒の縦型カード動画の台本を作成します。
 
 【出力フォーマット】必ず以下のJSONのみ:
 {
-  "trend_title": "今日の最大トレンド見出し（30文字以内）",
-  "summary": "1〜2文の要約説明（80文字以内）",
-  "rank1": "ランキング1位（20文字以内）",
-  "rank2": "ランキング2位（20文字以内）",
-  "rank3": "ランキング3位（20文字以内）"
+  "trend_title": "見出し（30文字以内、そのエージェントの口調で）",
+  "summary": "1〜2文の紹介文（80文字以内、そのエージェントの口調で）",
+  "rank1": "ポイント1（20文字以内）",
+  "rank2": "ポイント2（20文字以内）",
+  "rank3": "ポイント3（20文字以内）"
 }
 """
+
+AGENT_VOICE = {
+    "HAL": "HAL（21歳、日台ハーフの新人モデル。おっとり天然、K-POP好きが高じると早口になる。サッカー観戦も好き）",
+    "SUNAKUN": "すなくん（26歳、ガジェットオタク男子。テンション高め、フレンドリー）",
+}
 
 
 def _safe_parse(text: str) -> dict | None:
@@ -54,50 +64,76 @@ def _safe_parse(text: str) -> dict | None:
         return None
 
 
-def run():
-    topic = os.environ.get("POST_THEME", "").strip() or "本日の開発・AI・SNS関連の主要トレンド"
-    user_message = f"題材: {topic}\nトレンド動画用のJSONを生成してください。"
+def _fetch_pending_news(limit: int = 5) -> list[dict]:
+    url = os.environ.get("GAS_WEBHOOK_URL", "")
+    if not url:
+        notify("⚠️ アカリ: GAS_WEBHOOK_URL未設定のためPending_Newsを取得できません")
+        return []
+    try:
+        r = requests.post(url, json={"action": "get_pending_news", "limit": limit}, timeout=15, allow_redirects=False)
+        # このエンドポイントは302で本体を返すため、リダイレクト先を追う
+        if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("Location"):
+            r = requests.get(r.headers["Location"], timeout=15)
+        data = r.json()
+        return data.get("items", []) if data.get("ok") else []
+    except Exception as e:
+        notify(f"⚠️ アカリ: Pending_News取得失敗: {e}")
+        return []
 
+
+def _write_script(item: dict, agent: str) -> dict | None:
+    angle = item.get("hal_angle") if agent == "HAL" else item.get("sunakun_angle")
+    user_message = (
+        f"エージェント: {AGENT_VOICE[agent]}\n"
+        f"ニュース: {item.get('title')}\n"
+        f"カテゴリ: {item.get('category')}\n"
+        f"このエージェントとしての切り口メモ: {angle}\n"
+        "上記を踏まえて動画台本用のJSONを生成してください。"
+    )
     raw = call_claude(AKARI_PROMPT, user_message, model="claude-sonnet-4-6")
-    parsed = _safe_parse(raw)
-    if not parsed:
-        notify(f"⚠️ アカリ動画台本生成失敗\nRaw: {raw[:300]}")
+    return _safe_parse(raw)
+
+
+def run():
+    items = _fetch_pending_news(limit=5)
+    if not items:
+        notify("⚠️ アカリ: Pending_Newsに使える候補がありませんでした。動画生成をスキップします。")
         return
 
     today = datetime.now().strftime("%Y.%m.%d")
-    variables = {
-        "duration": 15,
-        "date_label": today,
-        "trend_title": str(parsed.get("trend_title", ""))[:30],
-        "summary": str(parsed.get("summary", ""))[:80],
-        "rank1": str(parsed.get("rank1", ""))[:20],
-        "rank2": str(parsed.get("rank2", ""))[:20],
-        "rank3": str(parsed.get("rank3", ""))[:20],
-    }
-    if not variables["trend_title"]:
-        notify("⚠️ アカリ動画: trend_titleが空。スキップ")
-        return
+    produced = 0
 
-    workflow_id = uuid.uuid4().hex[:8]
-    result = dispatch_render(
-        template_name="akari_trend",
-        variables=variables,
-        staff="akari",
-        source=f"akari_trend_video.py:{workflow_id}",
-    )
+    for agent, angle_key in (("HAL", "hal_angle"), ("SUNAKUN", "sunakun_angle")):
+        item = next((i for i in items if str(i.get(angle_key) or "").strip()), None)
+        if not item:
+            notify(f"ℹ️ アカリ: {agent}向けの候補がPending_Newsにありませんでした。スキップします。")
+            continue
 
-    if result.get("ok"):
-        notify(
-            f"📊 **アカリ トレンド動画 レンダリング開始** ({workflow_id})\n"
-            f"📅 {today}\n"
-            f"見出し: {variables['trend_title']}\n"
-            f"#1 {variables['rank1']} / #2 {variables['rank2']} / #3 {variables['rank3']}\n"
-            f"→ WF-07 完了後にMP4をDiscord通知"
+        parsed = _write_script(item, agent)
+        if not parsed or not str(parsed.get("trend_title", "")).strip():
+            notify(f"⚠️ アカリ: {agent}向け台本生成に失敗しました。\n元ニュース: {item.get('title')}")
+            continue
+
+        variables = {
+            "duration": 15,
+            "date_label": today,
+            "trend_title": str(parsed.get("trend_title", ""))[:30],
+            "summary": str(parsed.get("summary", ""))[:80],
+            "rank1": str(parsed.get("rank1", ""))[:20],
+            "rank2": str(parsed.get("rank2", ""))[:20],
+            "rank3": str(parsed.get("rank3", ""))[:20],
+        }
+        workflow_id = uuid.uuid4().hex[:8]
+        produce_video(
+            template_name="akari_trend",
+            variables=variables,
+            agent=agent,
+            workflow_id=workflow_id,
+            source=f"akari_trend_video.py:{workflow_id}",
         )
-    else:
-        notify(f"❌ アカリ動画dispatch失敗: {result.get('error') or result.get('message')}")
+        produced += 1
 
-    print(f"[akari_trend_video] dispatched workflow_id={workflow_id} ok={result.get('ok')}")
+    print(f"[akari_trend_video] produced={produced}")
 
 
 if __name__ == "__main__":

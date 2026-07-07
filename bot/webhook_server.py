@@ -26,21 +26,31 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b'{"status":"ok"}')
 
     def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length))
-        if _register_callback:
-            _register_callback(
-                body["approval_id"],
-                body["post_text"],
-                body["account"],
-                media_filename=body.get("media_filename", ""),
-                media_run_id=body.get("media_run_id", ""),
-                media_type=body.get("media_type", "none"),
-                affiliate_link=body.get("affiliate_link", ""),
-            )
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b'{"status":"ok"}')
+        print(f"[webhook_server] POST received from {self.client_address}", flush=True)
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length))
+            if _register_callback:
+                _register_callback(
+                    body["approval_id"],
+                    body["post_text"],
+                    body["account"],
+                    media_filename=body.get("media_filename", ""),
+                    media_run_id=body.get("media_run_id", ""),
+                    media_type=body.get("media_type", "none"),
+                    affiliate_link=body.get("affiliate_link", ""),
+                )
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+        except Exception as e:
+            print(f"[webhook_server] do_POST failed: {e}", flush=True)
+            try:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b'{"status":"error"}')
+            except Exception:
+                pass
 
     def log_message(self, *args):
         pass  # アクセスログを抑制
