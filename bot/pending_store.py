@@ -97,6 +97,21 @@ class PendingStore:
             }
             self._save()
 
+    def set_product_proposal(self, approval_id: str, url: str, title: str,
+                              affiliate_url: str, ttl_sec: int = 1800):
+        """Amazon商品の事前承認提案を保存する（kind="amazon_product"）。
+        既存のpost承認（kind省略時は"post"扱い）とは別種のデータとして
+        pop/all側で判別できるようにする。"""
+        with self._lock:
+            self._cache[approval_id] = {
+                "kind": "amazon_product",
+                "url": url,
+                "title": title,
+                "affiliate_url": affiliate_url,
+                "expires_at": time.time() + ttl_sec,
+            }
+            self._save()
+
     def pop(self, approval_id: str):
         with self._lock:
             data = self._cache.pop(approval_id, None)

@@ -13,6 +13,11 @@ services:
         sync: false
       - key: DISCORD_WEBHOOK_URL
         sync: false
+      # !すなくんAmazon の事前承認プレビュー（scrape_amazon_product）が
+      # アフィリエイトURLを組み立てるのに必要。GitHub Actions Secretsと
+      # 同じ値をRenderダッシュボードでも設定すること。
+      - key: AMAZON_ASSOCIATE_TAG
+        sync: false
       # bot/pending_store.py が承認待ちデータを保存するGistのID。
       # 未設定だと再起動のたびに新しいGistが作られ、承認待ちデータが消える。
       # 初回起動時のログ「created gist <id>」の値をここに設定して固定すること。

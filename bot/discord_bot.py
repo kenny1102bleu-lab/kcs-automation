@@ -8,10 +8,12 @@ import os
 import json
 import base64
 import asyncio
+import uuid
 import discord
 import requests
 
 from bot.pending_store import get_store
+from scripts.common.product_source import scrape_amazon_product
 
 TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 GITHUB_TOKEN = os.environ["GH_PAT"]
@@ -130,6 +132,11 @@ async def on_message(message: discord.Message):
         if data is None:
             await message.reply(f"❌ 承認ID `{approval_id}` が見つかりません（期限切れか無効）")
             return
+
+        if isinstance(data, dict) and data.get("kind") == "amazon_product":
+            await message.reply(add_to_amazon_queue(data["url"]))
+            return
+
         # media_path に "run_id:filename" を入れている
         media_run_id, media_filename = "", ""
         mp = data.get("media_path", "") if isinstance(data, dict) else ""
@@ -154,7 +161,10 @@ async def on_message(message: discord.Message):
             await message.reply("使い方: `!却下 <承認ID>` または `!返信スキップ <承認ID>`")
             return
         approval_id = parts[1]
-        pending_approvals.pop(approval_id, None)
+        data = pending_approvals.pop(approval_id, None)
+        if isinstance(data, dict) and data.get("kind") == "amazon_product":
+            await message.reply("❌ 商品案を却下しました。キューには追加されません。")
+            return
         await message.reply(f"❌ 投稿をキャンセルしました。次のスケジュールで新しい投稿案を生成します。")
         return
 
@@ -178,7 +188,26 @@ async def on_message(message: discord.Message):
                 "例: `!すなくんAmazon https://www.amazon.co.jp/dp/B0XXXXXXX`"
             )
             return
-        await message.reply(add_to_amazon_queue(url))
+        await message.reply("🔍 商品情報を取得中…")
+        product = scrape_amazon_product(url)
+        if not product:
+            await message.reply(
+                "⚠️ 商品情報の取得に失敗しました"
+                "（ページ取得失敗・AMAZON_ASSOCIATE_TAG未設定・Bot対策の可能性）。\n"
+                "URLを確認するか、時間を置いて再度お試しください。"
+            )
+            return
+        approval_id = str(uuid.uuid4())[:8]
+        _store.set_product_proposal(approval_id, url=url, title=product["title"],
+                                    affiliate_url=product["affiliate_url"])
+        await message.reply(
+            "🛒 **Amazon商品プレビュー**\n"
+            f"商品名: {product['title']}\n"
+            f"アフィリエイトURL: {product['affiliate_url']}\n\n"
+            f"承認（キュー追加）: `!承認 {approval_id}`\n"
+            f"却下（破棄）: `!却下 {approval_id}`\n"
+            "⏱️ 30分以内に返答がない場合は自動キャンセルされます。"
+        )
         return
 
     if content.startswith("!すなくん"):
@@ -198,6 +227,9 @@ async def on_message(message: discord.Message):
             lines.append("（承認待ちなし）")
         else:
             for aid, d in list(pending_approvals.items())[:20]:
+                if d.get("kind") == "amazon_product":
+                    lines.append(f"• `{aid}` [Amazon商品案] {d.get('title', '')[:40]}…")
+                    continue
                 preview = d["post_text"][:40].replace("\n", " ")
                 lines.append(f"• `{aid}` [{d['account']}] {preview}…")
         await message.reply("\n".join(lines))
@@ -234,7 +266,7 @@ async def on_message(message: discord.Message):
             "`!朝礼` / `!ブリーフィング` — 朝礼フロー手動起動\n"
             "`!HAL [テーマ]` — HAL投稿生成\n"
             "`!すなくん [テーマ]` — すなくん投稿生成\n"
-            "`!すなくんAmazon <URL>` — Amazon商品URLを投稿キューに追加（次回投稿で優先使用）\n"
+            "`!すなくんAmazon <URL>` — Amazon商品URLをスクレイピングし、商品名+アフィリエイトURLをプレビュー表示（`!承認`でキュー追加、`!却下`で破棄）\n"
             "`!レポート` — 日次レポート手動起動\n"
             "`!承認 <ID>` / `!返信承認 <ID>` — X投稿を承認して投稿実行\n"
             "`!却下 <ID>` / `!返信スキップ <ID>` — X投稿をキャンセル\n"
