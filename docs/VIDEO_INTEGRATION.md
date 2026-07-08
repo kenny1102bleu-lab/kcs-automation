@@ -1,6 +1,6 @@
 # KCSAPP × HyperFrames 動画生成統合ガイド
 
-各スタッフ（HAL / すなくん / もる / アカリ）が共通基盤で動画を量産できる仕組み。
+各スタッフ（HAL / すなくん / もる）が共通基盤で動画を量産できる仕組み。
 
 ## アーキテクチャ
 
@@ -15,9 +15,8 @@
 │  hal_post.py            │                                │  ┌──────────────────┐   │
 │  sunakun_post.py        │                                │  │ video_templates/  │   │
 │  moru_shorts.py         │                                │  │  hal_x_post/      │   │
-│  akari_trend_video.py   │                                │  │  suna_short/      │   │
-└────────────────────────┘                                │  │  moru_shorts/     │   │
-                                                          │  │  akari_trend/     │   │
+└────────────────────────┘                                │  │  suna_short/      │   │
+                                                          │  │  moru_shorts/     │   │
 ┌────────────────────────┐    workflow_call               │  └──────────────────┘   │
 │ Other GitHub Workflows  │ ─────────────────────────────▶│                          │
 └────────────────────────┘                                └──────────────┬───────────┘
@@ -70,16 +69,12 @@ dispatch_render(
 - WF-08 が JST 火/木/土 17:00 cron 起動
 - Claude Sonnet 4.6 で台本生成 → HyperFrames で縦動画レンダリング
 
-### アカリ（独立スクリプト scripts/akari_trend_video.py）
-- WF-09 が JST 毎日 08:30 cron 起動（朝礼の前）
-- 当日トレンドを 15秒横型カードに
-
 ### GAS から動画依頼
 ```javascript
 const result = requestVideoRender(
-  'akari_trend',                              // テンプレ
-  {duration: 15, trend_title: '...', ...},    // 変数
-  'akari',                                    // staff
+  'hal_x_post',                               // テンプレ
+  {duration: 10, caption_ja: '...', ...},     // 変数
+  'hal',                                      // staff
   'morning_briefing'                          // source
 );
 ```

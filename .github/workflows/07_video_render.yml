@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       template:
-        description: 'テンプレ名 (hal_x_post / suna_short / moru_shorts / akari_trend)'
+        description: 'テンプレ名 (hal_x_post / suna_short / moru_shorts)'
         required: true
         default: 'hal_x_post'
       variables:
