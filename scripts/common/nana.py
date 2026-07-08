@@ -203,6 +203,10 @@ def generate_media(media_type: str, prompt: str, account: str, photo_context: st
     full_prompt = ". ".join(segments)
 
     if media_type == "video":
+        if is_hal:
+            flow_video = _fetch_hal_flow_video()
+            if flow_video:
+                return flow_video
         max_video = int(os.environ.get("MAX_VIDEO_PER_MONTH", "10"))
         if _video_count_this_month() >= max_video:
             print(f"[nana] video quota exceeded ({max_video}/month) → fallback to image")
@@ -211,6 +215,31 @@ def generate_media(media_type: str, prompt: str, account: str, photo_context: st
             return _generate_video(full_prompt, account)
 
     return _generate_image(full_prompt, account)
+
+
+def _fetch_hal_flow_video() -> dict | None:
+    """社長がGoogle Flowで作ってDriveの"HAL_Flow_Videos"に置いた動画があれば、
+    Veo自動生成の代わりにそれを使う（GAS Webアプリ経由、取得と同時に使用済みへ退避）。
+    無ければNoneを返し、呼び出し側がVeo生成にフォールバックする。"""
+    url = os.environ.get("HAL_FLOW_VIDEO_API_URL", "").strip()
+    if not url:
+        return None
+    try:
+        r = requests.get(url, params={"action": "pop_hal_flow_video"}, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        print(f"[nana] HAL_FLOW_VIDEO_API_URL 取得エラー（Veoにフォールバック）: {_redact(e)}")
+        return None
+
+    if data.get("status") != "ok" or not data.get("base64"):
+        return None
+
+    ts = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    path = OUTPUT_DIR / f"HAL_{ts}_flow.mp4"
+    path.write_bytes(base64.b64decode(data["base64"]))
+    print(f"[nana] Google Flow動画を使用: {data.get('fileName', path.name)}")
+    return {"path": str(path), "type": "video", "source": "google_flow"}
 
 
 def _generate_image(prompt: str, account: str) -> dict:

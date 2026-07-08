@@ -33,6 +33,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
           GAS_NEWS_API_URL: ${{ secrets.GAS_NEWS_API_URL }}
+          HAL_FLOW_VIDEO_API_URL: ${{ secrets.HAL_FLOW_VIDEO_API_URL }}
           BOT_WEBHOOK_URL: ${{ secrets.BOT_WEBHOOK_URL }}
           MAX_VIDEO_PER_MONTH: '10'
           POST_THEME: ${{ inputs.theme }}
