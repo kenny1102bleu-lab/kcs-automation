@@ -82,6 +82,14 @@ def run():
     response = model.generate_content(user_message)
     parsed = parse_post(response.text)
 
+    # テスト/動作確認用: 通常はGeminiがテーマから media_type を判断するが、
+    # FORCE_MEDIA_TYPE が指定されていれば強制的に上書きする。
+    force_media = os.environ.get("FORCE_MEDIA_TYPE", "").strip().lower()
+    if force_media in ("image", "video", "none"):
+        parsed["media_type"] = force_media
+        if force_media == "video" and not parsed.get("media_prompt"):
+            parsed["media_prompt"] = f"{parsed.get('post_text', '')}. HAL in motion, natural candid moment."
+
     # マモルは「本文の中身」だけを審査対象にする。組み立て済みの最終文字列を
     # 審査対象にすると、fixed_textでの書き直し時にハッシュタグごと丸ごと
     # 上書きされ、2段構成が崩れるため（すなくん側で発覚した同種の事故を

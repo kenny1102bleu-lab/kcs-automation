@@ -9,6 +9,10 @@ on:
         description: '投稿テーマ（空欄で自動選択）'
         required: false
         default: ''
+      media_type:
+        description: 'メディア種別を強制（image/video/none、空欄でAIの自動判断）'
+        required: false
+        default: ''
 
 jobs:
   hal_post:
@@ -32,6 +36,7 @@ jobs:
           BOT_WEBHOOK_URL: ${{ secrets.BOT_WEBHOOK_URL }}
           MAX_VIDEO_PER_MONTH: '10'
           POST_THEME: ${{ inputs.theme }}
+          FORCE_MEDIA_TYPE: ${{ inputs.media_type }}
       - name: Upload generated media as artifact
         if: always()
         uses: actions/upload-artifact@v4
