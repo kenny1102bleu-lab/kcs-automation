@@ -5,6 +5,7 @@ KCS Discord Bot
 - Render.com の無料枠でホスティング
 """
 import os
+import io
 import json
 import base64
 import asyncio
@@ -274,6 +275,34 @@ async def on_message(message: discord.Message):
             "`!在庫` — Pizza在庫確認\n"
         )
         return
+
+
+async def _send_channel_notification(channel_id: str, message: str,
+                                      image_b64: str | None, image_filename: str | None):
+    """webhook_server経由で受けたアカウント別通知を、Botの権限でチャンネルへ直接送信する。
+    Incoming Webhookを新規発行せずに済むため、Discord Webhook URLをSecretsに追加する
+    手作業が不要になる（[[feedback-irreversible-paid-actions]]のトークン入力制約を回避）。"""
+    try:
+        channel = bot.get_channel(int(channel_id)) or await bot.fetch_channel(int(channel_id))
+        if image_b64:
+            data = base64.b64decode(image_b64)
+            await channel.send(content=message, file=discord.File(io.BytesIO(data), filename=image_filename or "image.jpg"))
+        else:
+            await channel.send(content=message)
+    except Exception as e:
+        print(f"[notify_channel] failed: channel_id={channel_id} error={e}", flush=True)
+
+
+def notify_channel(channel_id: str, message: str,
+                   image_b64: str | None = None, image_filename: str | None = None):
+    """webhook_server（別スレッド、同期）からBotのasyncioイベントループへ橋渡しする。"""
+    loop = getattr(bot, "loop", None)
+    if loop is None or not loop.is_running():
+        print(f"[notify_channel] bot loop not ready, dropping notification for channel_id={channel_id}", flush=True)
+        return
+    asyncio.run_coroutine_threadsafe(
+        _send_channel_notification(channel_id, message, image_b64, image_filename), loop
+    )
 
 
 def register_pending(approval_id: str, post_text: str, account: str,

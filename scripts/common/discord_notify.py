@@ -3,6 +3,7 @@ Discord 通知ユーティリティ。
 DISCORD_WEBHOOK_URLS が JSON で複数チャンネル定義されている場合はチャンネル別に送信。
 fallback で DISCORD_WEBHOOK_URL (単一) を使う。
 """
+import base64
 import json
 import os
 import pathlib
@@ -34,12 +35,49 @@ except Exception:
     WEBHOOKS = {}
 
 DEFAULT_WEBHOOK = _clean_env("DISCORD_WEBHOOK_URL")
+BOT_WEBHOOK_URL = _clean_env("BOT_WEBHOOK_URL")
+
+# 2026-07-08: HAL/すなくんの投稿プレビュー〜完了/失敗/セルフリプライ通知を
+# 専用チャンネルへ分離。新規Incoming Webhookは発行せず、既に全チャンネルへの
+# 送信権限を持つBot（bot/discord_bot.py）にchannel_id直送させることで実現。
+ACCOUNT_CHANNEL_IDS = {
+    "SUNAKUN": "1501098255130427432",
+    "HAL": "1494812858830032988",
+}
 
 
 def _resolve(channel: str | None) -> str:
     if channel and channel in WEBHOOKS:
         return WEBHOOKS[channel]
     return DEFAULT_WEBHOOK
+
+
+def notify_account(message: str, account: str, file_path: str | None = None) -> None:
+    """HAL/すなくん専用チャンネルへ、Bot経由（channel_id直送）で送信する。
+    対象アカウントでない場合やBot未設定の場合は従来のIncoming Webhookにフォールバック。"""
+    channel_id = ACCOUNT_CHANNEL_IDS.get((account or "").upper())
+    p = pathlib.Path(file_path) if file_path else None
+
+    if not channel_id or not BOT_WEBHOOK_URL:
+        if p and p.exists():
+            notify_with_file(message, file_path)
+        else:
+            notify(message)
+        return
+
+    payload = {"action": "notify", "channel_id": channel_id, "message": message}
+    if p and p.exists():
+        payload["image_b64"] = base64.b64encode(p.read_bytes()).decode("ascii")
+        payload["image_filename"] = p.name
+
+    try:
+        requests.post(BOT_WEBHOOK_URL, json=payload, timeout=60)
+    except Exception:
+        # Bot側がRender無料枠のスリープ等で届かない場合も、投稿フロー自体は止めない
+        if p and p.exists():
+            notify_with_file(message, file_path)
+        else:
+            notify(message)
 
 
 def notify(message: str, channel: str | None = None, channel_webhook: str | None = None) -> None:
@@ -65,7 +103,8 @@ def notify_with_file(message: str, file_path: str, channel: str | None = None) -
 
 
 def notify_post_preview(post_text: str, account: str, workflow_id: str,
-                        media_info: dict | None = None, qa_summary: str | None = None) -> None:
+                        media_info: dict | None = None, qa_summary: str | None = None,
+                        account_key: str | None = None) -> None:
     """X投稿プレビュー。media_infoがあれば添付して送信。
     qa_summary: ここまでの自動チェックが何を確認済みかを一覧表示し、
     社長の目視確認をトーン/事実確認だけに絞れるようにする。"""
@@ -90,7 +129,10 @@ def notify_post_preview(post_text: str, account: str, workflow_id: str,
         f"却下: `!却下 {workflow_id}` （または `!返信スキップ {workflow_id}`）\n"
         f"⏱️ 30分以内に返答がない場合は自動キャンセルされます。"
     )
-    if media_path and pathlib.Path(media_path).exists():
+    has_media = bool(media_path and pathlib.Path(media_path).exists())
+    if account_key and account_key.upper() in ACCOUNT_CHANNEL_IDS:
+        notify_account(message, account_key, media_path if has_media else None)
+    elif has_media:
         notify_with_file(message, media_path, channel="pending-approval")
     else:
         notify(message, channel="pending-approval")

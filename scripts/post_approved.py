@@ -11,7 +11,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from scripts.common.twitter_client import post_tweet, post_tweet_with_media, post_reply
-from scripts.common.discord_notify import notify
+from scripts.common.discord_notify import notify_account
 
 
 def run():
@@ -29,11 +29,10 @@ def run():
             meta = ""
     except Exception as e:
         # 投稿失敗時に沈黙しない（GitHub Actionsが赤くなるだけではDiscordに気づけない）
-        notify(f"🔴 **{account}** X投稿失敗\nMEDIA_PATH={media_path or '(なし)'}\nエラー: {e}",
-               channel="error-log")
+        notify_account(f"🔴 **{account}** X投稿失敗\nMEDIA_PATH={media_path or '(なし)'}\nエラー: {e}", account)
         raise
 
-    notify(f"✅ **{account}** 投稿完了{meta}\nhttps://x.com/i/web/status/{tweet_id}")
+    notify_account(f"✅ **{account}** 投稿完了{meta}\nhttps://x.com/i/web/status/{tweet_id}", account)
     print(f"投稿完了: tweet_id={tweet_id}")
 
     # engagementTick: 20分後にアフィリリンクをセルフリプ
@@ -41,9 +40,9 @@ def run():
         time.sleep(60 * 20)
         try:
             reply_id = post_reply(f"リンクこちらです👇\n{affiliate_link}", tweet_id, account)
-            notify(f"🔗 セルフリプライ完了 (tweet_id={reply_id})")
+            notify_account(f"🔗 セルフリプライ完了 (tweet_id={reply_id})", account)
         except Exception as e:
-            notify(f"🔴 **{account}** セルフリプライ失敗\nエラー: {e}", channel="error-log")
+            notify_account(f"🔴 **{account}** セルフリプライ失敗\nエラー: {e}", account)
             raise
 
 

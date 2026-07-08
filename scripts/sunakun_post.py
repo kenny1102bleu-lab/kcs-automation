@@ -237,7 +237,8 @@ def run():
         except Exception as e:
             print(f"bot webhook failed: {e}")
 
-    notify_post_preview(post_text, "すなくん (@sunakun_xxxx)", approval_id, media_info=media, qa_summary=qa_summary)
+    notify_post_preview(post_text, "すなくん (@sunakun_xxxx)", approval_id, media_info=media, qa_summary=qa_summary,
+                       account_key="SUNAKUN")
     print(f"すなくん投稿プレビュー送信完了 (approval_id={approval_id}, media={pending['media_type']})")
 
 

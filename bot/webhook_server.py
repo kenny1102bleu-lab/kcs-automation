@@ -12,11 +12,17 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 _register_callback = None  # discord_bot.py の register_pending を後から注入
+_notify_callback = None  # discord_bot.py の notify_channel を後から注入（アカウント別チャンネル直送用）
 
 
 def set_register_callback(fn):
     global _register_callback
     _register_callback = fn
+
+
+def set_notify_callback(fn):
+    global _notify_callback
+    _notify_callback = fn
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -30,7 +36,16 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length))
-            if _register_callback:
+            if body.get("action") == "notify":
+                # アカウント別チャンネルへの直接通知（discord_notify.notify_account経由）
+                if _notify_callback:
+                    _notify_callback(
+                        body["channel_id"],
+                        body["message"],
+                        body.get("image_b64"),
+                        body.get("image_filename"),
+                    )
+            elif _register_callback:
                 _register_callback(
                     body["approval_id"],
                     body["post_text"],
