@@ -10,6 +10,7 @@ import os
 import base64
 import datetime
 import pathlib
+import random
 import requests
 
 from scripts.common.mio import inspect_media
@@ -35,13 +36,70 @@ def _load_reference_b64(account: str) -> str | None:
 HAL_BASE_STYLE = (
     "Japanese-Taiwanese mixed female, 21 years old, long brown wavy hair, "
     "K-pop natural makeup, soft healing aura, modest stylish clothing, "
-    "photorealistic, daikanyama Tokyo street or cafe background, "
-    "natural light, candid, do not include any brand logo"
+    "photorealistic, natural light, candid, do not include any brand logo"
 )
 SUNAKUN_BASE_STYLE = (
     "product photography style, clean white background or modern desk setup, "
     "tech gadgets focus, vibrant but not flashy, photorealistic"
 )
+
+# HAL_PERSONA_BIBLE.md 第7-3章「セルフィー投稿のシチュエーション設定」＋
+# 第3章の推し活/サッカー/台湾ルーツ設定を反映したロケーション・バリエーション。
+# 旧実装は "daikanyama Tokyo street or cafe" を毎回固定で使っていたため、
+# 投稿を重ねるほど背景が代わり映えしない問題があった（社長指摘、2026-07-08）。
+#
+# キーワードに紐づくシーンは、その日の投稿テーマ（media_prompt）に一致した
+# ときだけ優先的に選ばれる。一致しなければ、一般的な日常シーンから
+# バイブル記載の頻度（寝室週2・その他週1）に沿って重み付き抽選する。
+HAL_KEYWORD_SCENES = [
+    (("K-POP", "LE SSERAFIM", "IVE", "推し", "ライブ"),
+     "bedroom desk covered in K-pop photocards, light stick, and posters, "
+     "excited candid selfie energy, fan merchandise visible"),
+    (("サッカー", "代表戦", "スタジアム", "観戦"),
+     "cozy living room with a soccer match paused on the TV in the background, "
+     "wearing a casual football jersey, excited candid mood"),
+    (("台湾", "父", "夜市"),
+     "warm string-lit Taiwanese-style night market stall or a retro Taiwanese cafe corner, "
+     "nostalgic warm lighting, cozy and a little homesick mood"),
+    (("配信", "本番", "スタジオ"),
+     "home streaming corner with ring light and microphone visible, casual pre-stream mood"),
+]
+
+HAL_PRIVATE_SCENES = [
+    ("寝室でリラックス", "cozy bedroom at night, warm low ambient lighting, relaxed nighttime mood", 2),
+    ("カフェでの休憩", "trendy Tokyo cafe by a window (Nakameguro or Ebisu style), soft natural daylight, "
+     "casual coffee break mood, drink on the table", 1),
+    ("おでかけ先", "walking around a lively Tokyo neighborhood such as Shibuya, Harajuku, or Omotesando, "
+     "outdoor natural daylight, active going-out mood", 1),
+    ("おうちコーデ", "cozy home interior, soft indoor lighting, mirror selfie showing today's outfit", 1),
+    ("公園の散歩道", "a quiet Tokyo park path lined with trees, soft natural daylight, relaxed walking mood", 1),
+]
+
+HAL_WORK_SCENES = [
+    ("スタジオ撮影の裏側", "professional photo studio backstage, softbox lighting rigs visible in the background, "
+     "behind-the-scenes work atmosphere"),
+    ("屋外ロケ撮影", "outdoor fashion shoot location in Tokyo, professional lighting equipment nearby, "
+     "staff working softly out of focus in the background"),
+    ("ブランドコラボ撮影", "styled fashion shoot set with clothing racks and mirrors, professional shoot atmosphere"),
+    ("雑誌撮影現場", "editorial magazine shoot set, photographer and reflector visible in soft focus background"),
+]
+
+
+def _pick_hal_scene(photo_context: str, prompt_text: str) -> str:
+    """投稿テーマ・シチュエーションに応じてロケーションを選ぶ。
+    work: 常に仕事シーンからランダム。
+    private: テーマにK-POP/サッカー/台湾/配信のキーワードがあれば対応シーンを優先、
+             無ければバイブル記載の頻度に沿って一般シーンから重み付き抽選する。"""
+    if photo_context == "work":
+        return random.choice(HAL_WORK_SCENES)[1]
+
+    text = (prompt_text or "").lower()
+    for keywords, scene in HAL_KEYWORD_SCENES:
+        if any(k.lower() in text for k in keywords):
+            return scene
+
+    scenes, weights = zip(*[(s[1], s[2]) for s in HAL_PRIVATE_SCENES])
+    return random.choices(scenes, weights=weights, k=1)[0]
 
 
 def _api_key():
@@ -137,8 +195,11 @@ def generate_media(media_type: str, prompt: str, account: str, photo_context: st
     # 構図（仕事/自撮り）の出し分けは人物の自撮り/他撮りが意味を持つHALのみ。
     # すなくんは商品写真スタイルのため、人物代名詞を含むこの指示は混入させない。
     composition = (WORK_COMPOSITION if photo_context == "work" else PRIVATE_COMPOSITION) if is_hal else ""
+    # ロケーションのバリエーション（HALのみ）。毎回同じ背景にならないよう、
+    # テーマに応じて/頻度に沿ってシーンを1つ選ぶ（HAL_PERSONA_BIBLE.md 第7-3章準拠）。
+    scene = f"Scene: {_pick_hal_scene(photo_context, prompt)}" if is_hal else ""
     time_context = _current_time_context()
-    segments = [prompt, f"Style: {base_style}"] + ([composition] if composition else []) + [time_context]
+    segments = [prompt, f"Style: {base_style}"] + ([scene] if scene else []) + ([composition] if composition else []) + [time_context]
     full_prompt = ". ".join(segments)
 
     if media_type == "video":
