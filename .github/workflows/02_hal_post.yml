@@ -2,7 +2,10 @@ name: WF-02 HAL投稿フロー
 
 on:
   schedule:
-    - cron: '0 12 * * *'  # JST 21:00 毎日
+    - cron: '0 1 * * *'   # JST 10:00
+    - cron: '0 6 * * *'   # JST 15:00
+    - cron: '0 9 * * *'   # JST 18:00
+    - cron: '0 12 * * *'  # JST 21:00
   workflow_dispatch:
     inputs:
       theme:

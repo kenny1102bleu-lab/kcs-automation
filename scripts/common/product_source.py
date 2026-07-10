@@ -35,10 +35,19 @@ API_REFERER = "https://google.com"
 GADGET_GENRES = ["100026", "564500", "101205", "562637", "211742"]
 
 # エンジニア向け食品・飲料系（コーヒー/スナック菓子/栄養補助スナック/ラーメン）
-# 社長指示: ガジェットだけでなく、こちらも投稿できるようにする
+# 社長指示: ガジェットだけでなく、こちらも投稿できるようにする（あくまで従属的な変化球）
 ENGINEER_FOOD_GENRES = ["100356", "562625", "566807", "110487"]
 
+# 単純にGADGET_GENRES+ENGINEER_FOOD_GENRESから均等抽選すると5:4でほぼ互角になり、
+# 「26歳ガジェット愛好家」のペルソナなのに食品ばかり紹介される事故が発生した
+# （2026-07-10、社長指摘・直近10投稿で7件が食品だったことを実ログで確認）。
+# ガジェットジャンルの1件あたりの重みを上げ、全体でおよそガジェット8割/食品2割に。
+_GADGET_WEIGHT = 3
+_FOOD_WEIGHT = 1
 RAKUTEN_GENRES = GADGET_GENRES + ENGINEER_FOOD_GENRES
+RAKUTEN_GENRE_WEIGHTS = (
+    [_GADGET_WEIGHT] * len(GADGET_GENRES) + [_FOOD_WEIGHT] * len(ENGINEER_FOOD_GENRES)
+)
 
 POSTED_HISTORY_PATH = pathlib.Path("data/suna_posted_products.json")
 POSTED_HISTORY_MAX = 200
@@ -84,7 +93,7 @@ def fetch_trending_product() -> dict | None:
 
     affiliate_id = clean_env("RAKUTEN_AFFILIATE_ID")
     posted = _load_posted_urls()
-    genre_id = random.choice(RAKUTEN_GENRES)
+    genre_id = random.choices(RAKUTEN_GENRES, weights=RAKUTEN_GENRE_WEIGHTS, k=1)[0]
 
     params = {
         "format": "json",
