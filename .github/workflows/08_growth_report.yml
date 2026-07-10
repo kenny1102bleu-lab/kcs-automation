@@ -1,0 +1,43 @@
+name: WF-08 グロースレポート
+
+on:
+  schedule:
+    - cron: '0 14 * * *'  # JST 23:00（HAL21:00/すなくん22:00の投稿後）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  growth_report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python scripts/growth_report.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
+          HAL_TWITTER_API_KEY: ${{ secrets.HAL_TWITTER_API_KEY }}
+          HAL_TWITTER_API_SECRET: ${{ secrets.HAL_TWITTER_API_SECRET }}
+          HAL_TWITTER_ACCESS_TOKEN: ${{ secrets.HAL_TWITTER_ACCESS_TOKEN }}
+          HAL_TWITTER_ACCESS_SECRET: ${{ secrets.HAL_TWITTER_ACCESS_SECRET }}
+          SUNAKUN_TWITTER_API_KEY: ${{ secrets.SUNAKUN_TWITTER_API_KEY }}
+          SUNAKUN_TWITTER_API_SECRET: ${{ secrets.SUNAKUN_TWITTER_API_SECRET }}
+          SUNAKUN_TWITTER_ACCESS_TOKEN: ${{ secrets.SUNAKUN_TWITTER_ACCESS_TOKEN }}
+          SUNAKUN_TWITTER_ACCESS_SECRET: ${{ secrets.SUNAKUN_TWITTER_ACCESS_SECRET }}
+      - name: Commit follower history
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain data/follower_history.json 2>/dev/null)" ]; then
+            git config user.email "sora-bot@kcs.local"
+            git config user.name "Sora Bot"
+            git add data/follower_history.json
+            git commit -m "chore: update follower history"
+            git pull --rebase origin master
+            git push origin HEAD:master
+          fi
