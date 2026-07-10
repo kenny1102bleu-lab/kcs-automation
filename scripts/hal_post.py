@@ -17,6 +17,7 @@ from scripts.common.news_pool import fetch_theme, format_theme_prompt
 from scripts.common.post_parser import parse as parse_post, assemble_post, format_hashtags
 from scripts.common.nana import generate_media
 from scripts.common.ng_patterns import scan as ng_scan
+from scripts.common.engagement_loop import get_win_patterns
 from scripts.common.env_clean import clean_env
 from scripts.common.x_limits import validate as x_validate, weighted_length, count_hashtags, truncate_to_fit
 from scripts.common.date_context import current_season_text
@@ -94,9 +95,23 @@ def _pick_hal_theme_category() -> tuple[str, str]:
     return label, hint
 
 
+def _build_context_block() -> str:
+    """直近の自アカウント勝ち/負けパターンを動的取得してプロンプト末尾に追加する
+    （すなくん側で先行実装済みの仕組みをHALにも接続、2026-07-10）。
+    取得失敗・データ不足時はNoneが返るため空文字（既存挙動維持）。"""
+    win = get_win_patterns(account="HAL")
+    if not win:
+        return ""
+    return (
+        "\n\n【直近の自アカウント勝ち/負けパターン】\n" + win
+        + "\n\n上記は参考情報。2段構成・繁體字併記・URL直貼り禁止の運用ルールは絶対遵守。"
+    )
+
+
 def run():
     genai.configure(api_key=clean_env("GEMINI_API_KEY"))
-    model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=YUKI_PROMPT)
+    system_prompt = YUKI_PROMPT + _build_context_block()
+    model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
 
     manual_theme = os.environ.get("POST_THEME", "").strip()
     if manual_theme:

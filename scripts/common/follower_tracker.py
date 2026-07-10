@@ -52,8 +52,24 @@ def _save(history: dict) -> None:
     DATA_PATH.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _delta_from_entries(entries: list[dict], current: int) -> dict:
+    def _closest(days_ago: int):
+        target = (datetime.date.today() - datetime.timedelta(days=days_ago)).isoformat()
+        candidates = [e for e in entries if e["date"] <= target]
+        return candidates[-1]["followers"] if candidates else None
+
+    d7 = _closest(7)
+    d30 = _closest(30)
+
+    return {
+        "current": current,
+        "delta_7d": (current - d7) if d7 is not None else None,
+        "delta_30d": (current - d30) if d30 is not None else None,
+    }
+
+
 def record_and_get_delta(account: str) -> dict:
-    """今日のフォロワー数を記録し、7日前・30日前との差分を返す。
+    """今日のフォロワー数をX APIから取得・記録し、7日前・30日前との差分を返す。
     取得失敗時は {"error": ...} を返す。差分の基準日データが無い項目はNone。"""
     current = fetch_current_followers(account)
     if current is None:
@@ -69,16 +85,15 @@ def record_and_get_delta(account: str) -> dict:
         history[account] = entries
         _save(history)
 
-    def _closest(days_ago: int):
-        target = (datetime.date.today() - datetime.timedelta(days=days_ago)).isoformat()
-        candidates = [e for e in entries if e["date"] <= target]
-        return candidates[-1]["followers"] if candidates else None
+    return _delta_from_entries(entries, current)
 
-    d7 = _closest(7)
-    d30 = _closest(30)
 
-    return {
-        "current": current,
-        "delta_7d": (current - d7) if d7 is not None else None,
-        "delta_30d": (current - d30) if d30 is not None else None,
-    }
+def get_latest(account: str) -> dict:
+    """X API呼び出しをせず、記録済みの最新エントリのみ返す（追加課金なし）。
+    daily_report.py(20:00)はgrowth_report.py(23:00)より前に走るため、
+    ここで返るのは前日以前の最新記録になる。記録が無ければcurrent=None。"""
+    history = _load()
+    entries = history.get(account, [])
+    if not entries:
+        return {"current": None, "delta_7d": None, "delta_30d": None}
+    return _delta_from_entries(entries, entries[-1]["followers"])
