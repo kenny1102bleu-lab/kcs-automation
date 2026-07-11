@@ -142,11 +142,30 @@ PRIVATE_COMPOSITION = (
     "optional, in every private/selfie image. Because the phone in her hand is "
     "the camera taking the photo, the phone/camera/device itself must NEVER "
     "appear anywhere in the frame (it cannot photograph itself) - no phone body, "
-    "no camera lens, no screen visible anywhere. Close-up front-camera angle "
+    "no camera lens, no screen visible anywhere. This also means: do NOT render "
+    "any OTHER phone, tablet, laptop, TV, or screen showing a video/concert/"
+    "livestream anywhere in the shot, even if the scene or caption references "
+    "watching, reacting to, or being excited about something on screen - convey "
+    "that mood only through her facial expression and nearby physical props "
+    "(photocards, lightstick, posters, merchandise, etc.), never through a "
+    "second visible screen. Close-up front-camera angle "
     "with slight wide-angle selfie distortion, eye-level or slightly elevated "
     "perspective (arm raised above or at face height), casual intimate framing "
     "typical of a personal phone selfie - never a composition that could be "
     "mistaken for a photo taken by someone else."
+)
+
+# reference_ai_image_naturalization_prompts.md（人物画像テンプレ）の英訳。
+# AIっぽい完璧すぎる質感・不自然な視線/光/手指を抑え、SNSに実在しそうな
+# 自然な写真に寄せるための共通サフィックス（2026-07-11追加）。
+NATURALIZATION_SUFFIX = (
+    "Make this look like an authentic candid photo that could realistically be "
+    "found on social media, not a generated image: natural phone-camera texture, "
+    "natural light matching the scene, a natural unposed gaze rather than a "
+    "stiff stare at the camera, natural-looking hands and fingers with no "
+    "distortion, balanced natural facial proportions, hair flowing naturally, "
+    "skin with natural texture and pores rather than overly smoothed, and the "
+    "light direction on her matching the light direction of the background."
 )
 
 
@@ -199,7 +218,12 @@ def generate_media(media_type: str, prompt: str, account: str, photo_context: st
     # テーマに応じて/頻度に沿ってシーンを1つ選ぶ（HAL_PERSONA_BIBLE.md 第7-3章準拠）。
     scene = f"Scene: {_pick_hal_scene(photo_context, prompt)}" if is_hal else ""
     time_context = _current_time_context()
-    segments = [prompt, f"Style: {base_style}"] + ([scene] if scene else []) + ([composition] if composition else []) + [time_context]
+    segments = (
+        [prompt, f"Style: {base_style}"]
+        + ([scene] if scene else [])
+        + ([composition] if composition else [])
+        + [time_context, NATURALIZATION_SUFFIX]
+    )
     full_prompt = ". ".join(segments)
 
     if media_type == "video":
