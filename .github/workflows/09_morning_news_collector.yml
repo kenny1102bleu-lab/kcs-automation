@@ -1,0 +1,21 @@
+name: WF-09 朝のニュース収集
+
+on:
+  schedule:
+    - cron: '50 20 * * *'  # JST 05:50（HAL初回投稿10:05より前、毎時00分オフセット済み）
+  workflow_dispatch:
+
+jobs:
+  morning_news:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python scripts/morning_news_collector.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
