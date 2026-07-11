@@ -2,7 +2,7 @@ name: WF-08 グロースレポート
 
 on:
   schedule:
-    - cron: '0 14 * * *'  # JST 23:00（HAL21:00/すなくん22:00の投稿後）
+    - cron: '20 14 * * *'  # JST 23:20（HAL21:05/すなくん22:12の投稿後、毎時00分オフセット）
   workflow_dispatch:
 
 permissions:
