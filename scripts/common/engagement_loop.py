@@ -44,10 +44,17 @@ def _resolve_user_id(client: tweepy.Client, account: str) -> str | None:
     if explicit:
         return explicit
     username = os.environ.get(f"{account.upper()}_X_USERNAME")
-    if not username:
-        return None
+    if username:
+        try:
+            res = client.get_user(username=username)
+            if res.data:
+                return str(res.data.id)
+        except Exception:
+            pass
+    # username/ID未設定時は、OAuth1認証済みアカウント自身をget_me()で解決する
+    # (follower_tracker.pyのfetch_current_followersと同じ仕組み)
     try:
-        res = client.get_user(username=username)
+        res = client.get_me()
         return str(res.data.id) if res.data else None
     except Exception:
         return None
