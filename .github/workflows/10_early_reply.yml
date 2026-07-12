@@ -1,0 +1,54 @@
+name: WF-10 早期リプライ戦略
+
+on:
+  schedule:
+    - cron: '40 7 * * *'  # JST 16:40（HAL15:05〜18:05の空き枠、他ジョブと分単位で衝突しない）
+  workflow_dispatch:
+    inputs:
+      account:
+        description: '対象アカウントを絞る（空欄でHAL/SUNAKUN両方）'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  early_reply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Run early reply
+        run: |
+          if [ -n "${{ inputs.account }}" ]; then
+            python -m scripts.early_reply --account "${{ inputs.account }}"
+          else
+            python -m scripts.early_reply
+          fi
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
+          HAL_TWITTER_API_KEY: ${{ secrets.HAL_TWITTER_API_KEY }}
+          HAL_TWITTER_API_SECRET: ${{ secrets.HAL_TWITTER_API_SECRET }}
+          HAL_TWITTER_ACCESS_TOKEN: ${{ secrets.HAL_TWITTER_ACCESS_TOKEN }}
+          HAL_TWITTER_ACCESS_SECRET: ${{ secrets.HAL_TWITTER_ACCESS_SECRET }}
+          SUNAKUN_TWITTER_API_KEY: ${{ secrets.SUNAKUN_TWITTER_API_KEY }}
+          SUNAKUN_TWITTER_API_SECRET: ${{ secrets.SUNAKUN_TWITTER_API_SECRET }}
+          SUNAKUN_TWITTER_ACCESS_TOKEN: ${{ secrets.SUNAKUN_TWITTER_ACCESS_TOKEN }}
+          SUNAKUN_TWITTER_ACCESS_SECRET: ${{ secrets.SUNAKUN_TWITTER_ACCESS_SECRET }}
+      - name: Commit early reply history
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain data/early_reply_history.json 2>/dev/null)" ]; then
+            git config user.email "early-reply-bot@kcs.local"
+            git config user.name "Early Reply Bot"
+            git add data/early_reply_history.json
+            git commit -m "chore: update early reply history"
+            git pull --rebase origin master
+            git push origin HEAD:master
+          fi
