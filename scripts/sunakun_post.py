@@ -95,6 +95,10 @@ def run():
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
 
     manual_theme = os.environ.get("POST_THEME", "").strip()
+    # 通常商品ソース（Amazon ASIN/楽天）ではスクレイピング不可なキャンペーン等を
+    # 社長が手動で1件だけ投稿させたい場合、実リンクをここで直接指定する
+    # （商品ページ構造を持たないURL＝ASIN抽出・スクレイピング非対応のため）。
+    manual_affiliate_url = os.environ.get("POST_AFFILIATE_URL", "").strip()
     # 手動テーマ指定時はテーマ優先（既存のAI生成フローを維持）。
     # 通常運用時の商品ソース優先順位（社長指示、2026-07-08 曜日ルール追加）:
     #   月・水・金: 1. Amazon手動キュー（社長がDiscordで承認したURL）
@@ -128,6 +132,13 @@ def run():
         )
     elif manual_theme:
         user_message = f"本日のテーマ: {manual_theme}\nすなくんの投稿テキストを作成してください。"
+        if manual_affiliate_url:
+            user_message += (
+                "\n※このテーマの紹介リンクをリプライ欄に別途貼るので、"
+                "リプ欄チェックを促す前提の文章にしてください（media_typeは"
+                "\"image\"、media_promptにはテーマ内容に合った画像生成プロンプトを"
+                "出力してください）。"
+            )
     else:
         theme = fetch_theme("sunakun")
         user_message = format_theme_prompt(theme, "本日のテーマ: 最新のコスパ最強ガジェット\nすなくんの投稿テキストを作成してください。")
@@ -188,6 +199,8 @@ def run():
         source_line = "🛒 商品ソース: Amazon手動キュー（社長選定・実商品・実画像・実アフィリエイトリンク）\n"
     elif product:
         source_line = "🛒 商品ソース: 楽天ランキングAPI（実商品・実画像・実アフィリエイトリンク）\n"
+    elif manual_affiliate_url:
+        source_line = f"🛒 商品ソース: 手動指定アフィリエイトリンク（社長指定・画像はAI生成）\n🔗 リンク: {manual_affiliate_url}\n"
     else:
         source_line = "🛒 商品ソース: AIテーマ生成（実商品URLなし、画像もAI生成）\n"
 
@@ -213,6 +226,8 @@ def run():
         media = generate_media(parsed["media_type"], parsed["media_prompt"], account="SUNAKUN")
         if media.get("error"):
             qa_summary += f"\n⚠️ メディア生成失敗（テキストのみ投稿可）: {media['error']}"
+        if manual_affiliate_url:
+            affiliate_link = manual_affiliate_url
 
     approval_id = str(uuid.uuid4())[:8]
     media_path = media.get("path", "")
