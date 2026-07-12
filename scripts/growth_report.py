@@ -11,6 +11,7 @@ from scripts.common.claude_client import call_claude
 from scripts.common.discord_notify import notify
 from scripts.common.engagement_loop import fetch_recent_post_stats
 from scripts.common.follower_tracker import record_and_get_delta
+from scripts.common import growth_report_store
 
 SORA_PROMPT = """あなたはKCS合同会社のグロースアナリスト「ソラ」です。
 HAL・すなくんのX(Twitter)運用における「伸びる/伸びない」を数値ベースで分析し、
@@ -21,11 +22,14 @@ HAL・すなくんのX(Twitter)運用における「伸びる/伸びない」を
 2. 会話性: いいねよりリプライを稼げているか、質問・呼びかけ要素の有無
 3. ホールド率: 画像/動画付き投稿とテキストのみ投稿の反応差
 4. ハッシュタグ・投稿時間帯の傾向
+5. フォロー転換: エンゲージメント（いいね/インプレッション）は取れているのに
+   フォロワー増加が伴っていない兆候がないか。投稿本文にフォローする理由・
+   継続価値を感じさせる要素があるかどうかも見る
 
 【厳守事項】
 - 渡された実データにのみ基づく。数値が「データ不足」の項目について憶測や捏造の数字を書かない
-- 出力は「今週の数字」「勝ちパターン」「負けパターン」「HALへの指示」「すなくんへの指示」の
-  5ブロック構成。各ブロック簡潔に、合計400文字程度
+- 出力は「今週の数字」「勝ちパターン」「負けパターン」「フォロー転換の診断」「HALへの指示」
+  「すなくんへの指示」の6ブロック構成。各ブロック簡潔に、合計480文字程度
 - 感情表現やキャラクター演技はしない。淡々とした分析口調で書く"""
 
 
@@ -39,15 +43,17 @@ def _format_stats(account: str, stats: list[dict]) -> str:
     lines = [f"{account} 直近{len(stats)}件:"]
     for s in stats:
         lines.append(
-            f"- imp:{s['impressions']} like:{s['likes']} rt:{s['retweets']} reply:{s['replies']} / {s['text'][:40]}"
+            f"- imp:{s['impressions']} like:{s['likes']} rt:{s['retweets']} reply:{s['replies']} / {s['text'][:120]}"
         )
     return "\n".join(lines)
 
 
 def run():
     sections = []
+    follower_snapshot = {}
     for account in ("HAL", "SUNAKUN"):
         delta = record_and_get_delta(account)
+        follower_snapshot[account] = delta
         if delta.get("error"):
             sections.append(f"{account} フォロワー: 取得不可（{delta['error']}）")
         else:
@@ -70,6 +76,11 @@ def run():
         notify(f"⚠️ **ソラ グロースレポート生成失敗**\n{type(e).__name__}: {str(e)[:300]}")
         print(f"[growth_report] failed: {e}")
         return
+
+    try:
+        growth_report_store.save(report, follower_snapshot)
+    except Exception as e:
+        print(f"[growth_report] failed to persist report: {e}")
 
     message = (
         "━━━━━━━━━━━━━━━━━━━━━━\n"

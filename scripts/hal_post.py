@@ -88,6 +88,10 @@ HAL_THEME_CATEGORIES = [
 ]
 
 
+# フォロー訴求フックを混ぜる確率（社長確認済み、2026-07-12: 3投稿に1回未満程度）
+FOLLOW_HOOK_PROBABILITY = 0.15
+
+
 def _pick_hal_theme_category() -> tuple[str, str]:
     idx = random.choices(range(len(HAL_THEME_CATEGORIES)),
                           weights=[c[1] for c in HAL_THEME_CATEGORIES], k=1)[0]
@@ -127,6 +131,14 @@ def run():
                 "HALの投稿テキストを作成してください。"
             )
     user_message += "\n" + current_season_text()
+    # フォロー訴求フック（確率式）。エンゲージメントは取れてもフォロワー転換が
+    # 弱いという課題（2026-07-12、社長指摘・ソラのグロースレポート分析で判明）
+    # への対応。毎回だと宣伝っぽくなるため、3投稿に1回未満程度の頻度に抑える。
+    if random.random() < FOLLOW_HOOK_PROBABILITY:
+        user_message += (
+            "\n※今回は投稿の最後に、フォローしてもらえたら嬉しいという"
+            "ニュアンスを、いつもの口調で自然に一言添えてください。"
+        )
     response = model.generate_content(user_message)
     parsed = parse_post(response.text)
 

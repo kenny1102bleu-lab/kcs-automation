@@ -33,10 +33,10 @@ jobs:
       - name: Commit follower history
         if: always()
         run: |
-          if [ -n "$(git status --porcelain data/follower_history.json 2>/dev/null)" ]; then
+          if [ -n "$(git status --porcelain data/follower_history.json data/growth_report_latest.json 2>/dev/null)" ]; then
             git config user.email "sora-bot@kcs.local"
             git config user.name "Sora Bot"
-            git add data/follower_history.json
+            git add data/follower_history.json data/growth_report_latest.json
             git commit -m "chore: update follower history"
             git pull --rebase origin master
             git push origin HEAD:master
