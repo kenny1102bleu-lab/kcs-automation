@@ -218,7 +218,7 @@ def run():
         source_line = "🛒 商品ソース: AIテーマ生成（実商品URLなし、画像もAI生成）\n"
 
     qa_summary = (
-        "✅ 自動監査 通過済み: AI開示語 / 簡体字 / AI口調(案1･2等) / "
+        "✅ 自動監査 通過済み: AI開示語 / 繁体字 / AI口調(案1･2等) / "
         "絵文字クラスタ / スパム / 個人情報\n"
         f"✅ X文字数: {weighted_length(post_text)}/280ユニット / ハッシュタグ: {count_hashtags(post_text)}個\n"
         "✅ PR表記・リプ欄誘導文言: コード側で1段目に固定挿入済み\n"
