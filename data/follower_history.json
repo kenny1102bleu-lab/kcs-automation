@@ -7,6 +7,10 @@
     {
       "date": "2026-07-11",
       "followers": 4
+    },
+    {
+      "date": "2026-07-12",
+      "followers": 4
     }
   ],
   "SUNAKUN": [
@@ -16,6 +20,10 @@
     },
     {
       "date": "2026-07-11",
+      "followers": 0
+    },
+    {
+      "date": "2026-07-12",
       "followers": 0
     }
   ]
