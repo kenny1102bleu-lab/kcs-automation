@@ -1,0 +1,24 @@
+name: DIAG Xトークン権限診断
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python scripts/diag_twitter_access.py
+        env:
+          HAL_TWITTER_API_KEY: ${{ secrets.HAL_TWITTER_API_KEY }}
+          HAL_TWITTER_API_SECRET: ${{ secrets.HAL_TWITTER_API_SECRET }}
+          HAL_TWITTER_ACCESS_TOKEN: ${{ secrets.HAL_TWITTER_ACCESS_TOKEN }}
+          HAL_TWITTER_ACCESS_SECRET: ${{ secrets.HAL_TWITTER_ACCESS_SECRET }}
+          SUNAKUN_TWITTER_API_KEY: ${{ secrets.SUNAKUN_TWITTER_API_KEY }}
+          SUNAKUN_TWITTER_API_SECRET: ${{ secrets.SUNAKUN_TWITTER_API_SECRET }}
+          SUNAKUN_TWITTER_ACCESS_TOKEN: ${{ secrets.SUNAKUN_TWITTER_ACCESS_TOKEN }}
+          SUNAKUN_TWITTER_ACCESS_SECRET: ${{ secrets.SUNAKUN_TWITTER_ACCESS_SECRET }}
