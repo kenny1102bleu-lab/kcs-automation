@@ -1,0 +1,43 @@
+name: TEST v1.1 Twitter API
+
+on:
+  workflow_dispatch:
+    inputs:
+      account:
+        description: 'Account (HAL or SUNAKUN)'
+        required: true
+        default: 'HAL'
+
+jobs:
+  test_v1:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Test v1.1 update_status
+        run: |
+          python -c "
+          import sys, os
+          sys.path.insert(0, '.')
+          from scripts.common.twitter_client import post_tweet
+          account = os.environ.get('TEST_ACCOUNT', 'HAL')
+          try:
+              tweet_id = post_tweet('[v1.1テスト] API切り替え動作確認。このツイートは自動テストです。', account)
+              print(f'SUCCESS! account={account} tweet_id={tweet_id}')
+          except Exception as e:
+              print(f'FAILED: {e}')
+              raise
+          "
+        env:
+          TEST_ACCOUNT: ${{ github.event.inputs.account }}
+          HAL_TWITTER_API_KEY: ${{ secrets.HAL_TWITTER_API_KEY }}
+          HAL_TWITTER_API_SECRET: ${{ secrets.HAL_TWITTER_API_SECRET }}
+          HAL_TWITTER_ACCESS_TOKEN: ${{ secrets.HAL_TWITTER_ACCESS_TOKEN }}
+          HAL_TWITTER_ACCESS_SECRET: ${{ secrets.HAL_TWITTER_ACCESS_SECRET }}
+          SUNAKUN_TWITTER_API_KEY: ${{ secrets.SUNAKUN_TWITTER_API_KEY }}
+          SUNAKUN_TWITTER_API_SECRET: ${{ secrets.SUNAKUN_TWITTER_API_SECRET }}
+          SUNAKUN_TWITTER_ACCESS_TOKEN: ${{ secrets.SUNAKUN_TWITTER_ACCESS_TOKEN }}
+          SUNAKUN_TWITTER_ACCESS_SECRET: ${{ secrets.SUNAKUN_TWITTER_ACCESS_SECRET }}
