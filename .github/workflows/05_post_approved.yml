@@ -4,6 +4,10 @@ on:
   repository_dispatch:
     types: [post-approved]
 
+concurrency:
+  group: twitter-post
+  cancel-in-progress: false
+
 jobs:
   post:
     runs-on: ubuntu-latest
