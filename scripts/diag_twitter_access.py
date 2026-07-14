@@ -48,6 +48,11 @@ def check(prefix: str) -> None:
     r2 = sess.get("https://api.twitter.com/2/users/me")
     print(f"  GET /2/users/me: HTTP {r2.status_code}  body={r2.text[:200]}")
 
+    # 3) ★書き込み枠の使用量（月間cap）。403の真因が使用量上限かを確定する。
+    #    project_usage が project_cap に達していれば投稿(POST /2/tweets)が403になる。
+    r3 = sess.get("https://api.twitter.com/2/usage/tweets")
+    print(f"  GET /2/usage/tweets: HTTP {r3.status_code}  body={r3.text[:400]}")
+
 
 if __name__ == "__main__":
     for p in ("HAL", "SUNAKUN"):
