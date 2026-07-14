@@ -20,6 +20,11 @@ TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 GITHUB_TOKEN = os.environ["GH_PAT"]
 GITHUB_REPO = os.environ["GITHUB_REPO"]  # 例: kenny1102/kcs-automation
 
+# クラウドワークス案件監視GASの承認Webhook。未設定でもBot全体は起動できるようにする
+# （os.environ[...]の必須方式にすると設定漏れだけでBot全体が起動不能になるため）
+CW_APPROVAL_WEBAPP_URL = os.environ.get("CW_APPROVAL_WEBAPP_URL", "")
+CW_APPROVAL_SECRET = os.environ.get("CW_APPROVAL_SECRET", "")
+
 # 承認待ち投稿は Gist に永続化（Bot再起動でも保持）
 _store = get_store()
 
@@ -92,6 +97,24 @@ def add_to_amazon_queue(url: str) -> str:
         return f"⚠️ キュー追加失敗: HTTP {r2.status_code} {r2.text[:200]}"
     except Exception as e:
         return f"⚠️ キュー追加失敗: {e}"
+
+
+def cw_approve_job(job_id: str) -> dict:
+    """クラウドワークス案件監視GASのWeb App(doPost)を叩き、
+    「通知済み」シートの応募済み(I列)・応募日時(J列)を更新する。"""
+    if not CW_APPROVAL_WEBAPP_URL or not CW_APPROVAL_SECRET:
+        return {"ok": False, "error": "not_configured"}
+    try:
+        r = requests.post(
+            CW_APPROVAL_WEBAPP_URL,
+            json={"job_id": job_id, "secret": CW_APPROVAL_SECRET},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            return {"ok": False, "error": f"http_{r.status_code}"}
+        return r.json()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def trigger_workflow(event_type: str, payload: dict) -> bool:
@@ -257,6 +280,39 @@ async def on_message(message: discord.Message):
             await message.reply(f"⚠️ マージ失敗: {e}")
         return
 
+    if content.startswith("!CW承認"):
+        parts = content.split()
+        if len(parts) < 2:
+            await message.reply("使い方: `!CW承認 <job_id>`")
+            return
+        job_id = parts[1]
+        result = cw_approve_job(job_id)
+
+        if not result.get("ok"):
+            err = result.get("error", "unknown")
+            if err == "not_configured":
+                await message.reply("⚠️ CW承認機能が未設定です（CW_APPROVAL_WEBAPP_URL / CW_APPROVAL_SECRET）。管理者に連絡してください。")
+            elif err == "not_found":
+                await message.reply(f"❌ job_id `{job_id}` が見つかりません。通知メッセージのIDを確認してください。")
+            elif err == "unauthorized":
+                await message.reply("⚠️ 認証エラーです。管理者に連絡してください。")
+            else:
+                await message.reply(f"⚠️ 承認処理に失敗しました: {err}")
+            return
+
+        if result.get("already_applied"):
+            await message.reply(
+                f"⚠️ この案件は既に承認/応募済みです（{result.get('applied_at', '')}）\n"
+                f"{result.get('title', '')}"
+            )
+            return
+
+        await message.reply(
+            "✅ 承認されました。クラウドワークスで応募してください。\n"
+            f"**{result.get('title', '')}**\n{result.get('url', '')}"
+        )
+        return
+
     if content == "!在庫":
         await message.reply("📦 Pizza在庫: ストックなし（手動補充してください）")
         return
@@ -272,6 +328,7 @@ async def on_message(message: discord.Message):
             "`!承認 <ID>` / `!返信承認 <ID>` — X投稿を承認して投稿実行\n"
             "`!却下 <ID>` / `!返信スキップ <ID>` — X投稿をキャンセル\n"
             "`!状況` — 承認待ち一覧表示\n"
+            "`!CW承認 <job_id>` — クラウドワークス新着案件を承認（応募リマインド通知＋スプレッドシート記録）\n"
             "`!在庫` — Pizza在庫確認\n"
         )
         return

@@ -23,3 +23,9 @@ services:
       # 初回起動時のログ「created gist <id>」の値をここに設定して固定すること。
       - key: PENDING_GIST_ID
         sync: false
+      # クラウドワークス案件監視GASの承認Webhook（!CW承認コマンド用）。
+      # GAS側「設定」シートのCW_APPROVAL_SECRETと同じ値をここに設定すること。
+      - key: CW_APPROVAL_WEBAPP_URL
+        sync: false
+      - key: CW_APPROVAL_SECRET
+        sync: false
