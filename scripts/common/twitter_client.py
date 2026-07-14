@@ -1,9 +1,8 @@
 """
 X(Twitter) クライアント。
 - post_tweet: text のみ
-- post_tweet_with_media: 画像/動画付き (v1.1 API でmedia upload → v1.1でtweet)
+- post_tweet_with_media: 画像/動画付き (v1.1 API でmedia upload → v2でtweet)
 - post_reply: セルフリプライ（engagementTick用）
-
 
 認証情報はclean_env()でBOM/ゼロ幅文字を除去してから使う。素のos.environ[...]
 のままだとOAuth1.0a署名が壊れ、Twitter API側で
@@ -11,16 +10,15 @@ X(Twitter) クライアント。
 DISCORD_WEBHOOK_URL(S) / GEMINI_API_KEY で既に発生した同じ原因のバグが
 ここにも残っていたため2026-07-08に修正）。
 
-
 403エラーハンドリング（2026-07-12追加）:
 - 重複ツイート (error code 187/327): ゼロ幅スペースを付与して自動リトライ
 - 権限エラー: X Developer Portalでトークン再生成を促すメッセージを表示
 
-2026-07-14: v2 create_tweet の403エラー回避のため全投稿をv1.1 update_statusに切り替え
+2026-07-14: v1.1 update_status は404 (エンドポイント廃止) のためv2 create_tweetに戻す
+         media_upload はv1.1のままで動作することを確認済み
 """
 import os
 import tweepy
-
 
 from scripts.common.env_clean import clean_env
 
@@ -82,14 +80,14 @@ def _handle_403(e) -> None:
 def post_tweet(text: str, account: str = "HAL") -> str:
     prefix = account.upper()
     try:
-        status = _v1_api(prefix).update_status(status=text)
-        return str(status.id)
+        resp = _v2_client(prefix).create_tweet(text=text)
+        return str(resp.data["id"])
     except tweepy.errors.Forbidden as e:
         _handle_403(e)
         if _is_duplicate_error(e):
             print("[twitter_client] 重複検知 → ゼロ幅スペース付与してリトライ")
-            status = _v1_api(prefix).update_status(status=text + "\u200b")
-            return str(status.id)
+            resp = _v2_client(prefix).create_tweet(text=text + "\u200b")
+            return str(resp.data["id"])
         raise
 
 
@@ -100,22 +98,27 @@ def post_tweet_with_media(text: str, media_path: str, account: str = "HAL") -> s
     api = _v1_api(prefix)
     media = api.media_upload(filename=media_path)
     try:
-        status = api.update_status(status=text, media_ids=[media.media_id_string])
-        return str(status.id)
+        resp = _v2_client(prefix).create_tweet(
+            text=text,
+            media_ids=[str(media.media_id)],
+        )
+        return str(resp.data["id"])
     except tweepy.errors.Forbidden as e:
         _handle_403(e)
         if _is_duplicate_error(e):
             print("[twitter_client] 重複検知 → ゼロ幅スペース付与してリトライ")
-            status = api.update_status(status=text + "\u200b", media_ids=[media.media_id_string])
-            return str(status.id)
+            resp = _v2_client(prefix).create_tweet(
+                text=text + "\u200b",
+                media_ids=[str(media.media_id)],
+            )
+            return str(resp.data["id"])
         raise
 
 
 def post_reply(text: str, in_reply_to_tweet_id: str, account: str = "HAL") -> str:
     prefix = account.upper()
-    status = _v1_api(prefix).update_status(
-        status=text,
-        in_reply_to_status_id=in_reply_to_tweet_id,
-        auto_populate_reply_metadata=True,
+    resp = _v2_client(prefix).create_tweet(
+        text=text,
+        in_reply_to_tweet_id=in_reply_to_tweet_id,
     )
-    return str(status.id)
+    return str(resp.data["id"])
