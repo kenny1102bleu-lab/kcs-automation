@@ -13,8 +13,25 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+import base64
+import requests
 from requests_oauthlib import OAuth1Session
 from scripts.common.env_clean import clean_env
+
+
+def _app_only_bearer(ck: str, cs: str) -> str:
+    """consumer key/secret から OAuth2 App-Only Bearer を発行（別Secret不要）。"""
+    tok = base64.b64encode(f"{ck}:{cs}".encode()).decode()
+    r = requests.post(
+        "https://api.twitter.com/oauth2/token",
+        headers={"Authorization": f"Basic {tok}",
+                 "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
+        data={"grant_type": "client_credentials"},
+    )
+    if r.status_code == 200:
+        return r.json().get("access_token", "")
+    print(f"  bearer発行失敗: HTTP {r.status_code} {r.text[:200]}")
+    return ""
 
 
 def check(prefix: str) -> None:
@@ -48,10 +65,13 @@ def check(prefix: str) -> None:
     r2 = sess.get("https://api.twitter.com/2/users/me")
     print(f"  GET /2/users/me: HTTP {r2.status_code}  body={r2.text[:200]}")
 
-    # 3) ★書き込み枠の使用量（月間cap）。403の真因が使用量上限かを確定する。
+    # 3) ★プロジェクトの使用量/プラン上限（月間cap）。App-Only Bearer必須。
     #    project_usage が project_cap に達していれば投稿(POST /2/tweets)が403になる。
-    r3 = sess.get("https://api.twitter.com/2/usage/tweets")
-    print(f"  GET /2/usage/tweets: HTTP {r3.status_code}  body={r3.text[:400]}")
+    bearer = _app_only_bearer(ck, cs)
+    if bearer:
+        r3 = requests.get("https://api.twitter.com/2/usage/tweets",
+                          headers={"Authorization": f"Bearer {bearer}"})
+        print(f"  GET /2/usage/tweets: HTTP {r3.status_code}  body={r3.text[:500]}")
 
 
 if __name__ == "__main__":
