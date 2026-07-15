@@ -30,12 +30,16 @@ QUERIES = {
         "Amazon お得 買い物 lang:ja -is:retweet",
         "楽天 セール ガジェット lang:ja -is:retweet",
         "モバイルバッテリー レビュー lang:ja -is:retweet",
+        "キャンプ ギア アウトドア lang:ja -is:retweet",
+        "アウトドア ガジェット おすすめ lang:ja -is:retweet",
     ],
     "hal": [
         "K-POP 沼 lang:ja -is:retweet",
         "17LIVE 配信 応援 lang:ja -is:retweet",
         "モデル オーディション 応援 lang:ja -is:retweet",
         "コスメ 新作 レビュー lang:ja -is:retweet",
+        "ディズニー ランド シー 楽しい lang:ja -is:retweet",
+        "台湾 ハーフ 日本 lang:ja -is:retweet",
     ],
 }
 
