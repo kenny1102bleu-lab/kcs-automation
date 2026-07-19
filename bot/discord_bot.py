@@ -365,8 +365,15 @@ def notify_channel(channel_id: str, message: str,
 def register_pending(approval_id: str, post_text: str, account: str,
                      media_filename: str = "", media_run_id: str = "",
                      media_type: str = "none", affiliate_link: str = ""):
-    """外部から承認待ちを登録する。Gist永続化＋30分TTL（store側で管理）。"""
+    """外部から承認待ちを登録する。Gist永続化＋3時間TTL（store側で管理）。
+
+    TTLは30分→3時間に延長（2026-07-19）。30分だと社長が席を外している間に
+    プレビューが失効し、2026-07-18は生成4回全てが未承認のまま消えて
+    すなくんが35時間無投稿になった。3時間は各アカウントの投稿間隔
+    （1日4回、約3〜7時間間隔）に合わせた値で、次のプレビューが届く頃には
+    前のものが自然失効する。メディアartifactの保持期間(1日)にも収まる。
+    """
     # media_path フィールドに media_filename を入れて再利用
     extra_path = f"{media_run_id}:{media_filename}" if media_filename else ""
-    _store.set(approval_id, post_text, account, extra_path, media_type, ttl_sec=1800,
+    _store.set(approval_id, post_text, account, extra_path, media_type, ttl_sec=10800,
                affiliate_link=affiliate_link)
