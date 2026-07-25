@@ -20,6 +20,7 @@ from scripts.common.claude_client import call_claude
 from scripts.common.discord_notify import notify
 from scripts.common.knowledge import find_similar, save_incident, increment_applied_count
 from scripts.common.ng_patterns import scan as ng_scan
+from scripts.common.noa_rationale import write_rationale_doc
 
 
 KENJI_PROMPT = """あなたはKCS合同会社の自律型AIインフラエンジニア「ケンジ」です。
@@ -188,6 +189,15 @@ def run():
         message += "⚠️ 適用可能なパッチなし。手動確認をお願いします。\n"
         notify(message, channel="error-log")
         return
+
+    # ── Step 4.5: ノアが設計意図（Rationale）をdocs/rationale/に記録 ───────────
+    write_rationale_doc(
+        result.get("system", "unknown"),
+        result.get("severity", "?"),
+        result.get("reason", ""),
+        result.get("solution", ""),
+        applied,
+    )
 
     # ── Step 5: モード別展開 ───────────────────────────
     title = f"fix(kenji): {result.get('system','system')} - {result.get('reason','?')[:60]}"

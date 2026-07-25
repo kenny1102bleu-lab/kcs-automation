@@ -1,0 +1,21 @@
+name: WF-12 シオリ 外部リサーチ収集
+
+on:
+  schedule:
+    - cron: '30 0 * * 1'  # JST 毎週月曜 9:30
+  workflow_dispatch:
+
+jobs:
+  shiori_research:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python scripts/shiori_research.py
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
