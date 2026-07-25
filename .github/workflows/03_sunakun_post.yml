@@ -20,6 +20,14 @@ on:
 permissions:
   contents: write
 
+# 同時実行の直列化。遅延した定時cronとGAS自己修復/手動のworkflow_dispatchが
+# ほぼ同時に走ると、両ランが data/suna_posted_products.json 等を並行コミットして
+# push競合で片方が失敗する（2026-07-19実発生）。後発を待機させることで、
+# 後発は先発のコミット済み状態をcheckoutでき、競合が構造的に起きなくなる。
+concurrency:
+  group: sunakun-post
+  cancel-in-progress: false
+
 jobs:
   sunakun_post:
     runs-on: ubuntu-latest
