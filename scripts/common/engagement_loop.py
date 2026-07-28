@@ -7,6 +7,7 @@ Gemini に「伸びた投稿の共通点・伸びなかった共通点・次回�
 import os
 import tweepy
 import google.generativeai as genai
+from requests_oauthlib import OAuth1Session
 
 from scripts.common.env_clean import clean_env
 
@@ -60,6 +61,17 @@ def _resolve_user_id(client: tweepy.Client, account: str) -> str | None:
         return None
 
 
+def _oauth1_session(account: str) -> OAuth1Session | None:
+    prefix = account.upper()
+    ck = clean_env(f"{prefix}_TWITTER_API_KEY")
+    cs = clean_env(f"{prefix}_TWITTER_API_SECRET")
+    at = clean_env(f"{prefix}_TWITTER_ACCESS_TOKEN")
+    ats = clean_env(f"{prefix}_TWITTER_ACCESS_SECRET")
+    if ck and cs and at and ats:
+        return OAuth1Session(ck, cs, at, ats)
+    return None
+
+
 def fetch_recent_post_stats(account: str = "SUNAKUN", days: int = 7, max_results: int = 30) -> list[dict]:
     client = _x_client(account)
     if client is None:
@@ -67,6 +79,39 @@ def fetch_recent_post_stats(account: str = "SUNAKUN", days: int = 7, max_results
     user_id = _resolve_user_id(client, account)
     if not user_id:
         return []
+
+    # 2026-07-28判明: tweepy.Client.get_users_tweets()はこのOAuth1認証情報の組み合わせで
+    # 毎回 401 Unauthorized になる（同一の認証情報での生のHTTPリクエストは200で成功する、
+    # tweepy側の既知の癖）。2週間以上「投稿データ取得不可」が続いていた直接原因。
+    # OAuth1情報があれば raw OAuth1Session で直接叩き、無ければ（Bearerのみ）従来のtweepy経路。
+    session = _oauth1_session(account)
+    if session is not None:
+        try:
+            res = session.get(
+                f"https://api.twitter.com/2/users/{user_id}/tweets",
+                params={
+                    "max_results": max(5, min(max_results, 100)),
+                    "tweet.fields": "public_metrics,created_at",
+                    "exclude": "replies,retweets",
+                },
+            )
+            res.raise_for_status()
+            tweets = res.json().get("data", [])
+        except Exception as e:
+            print(f"[engagement_loop] OAuth1 tweets取得失敗 ({account}): {e}")
+            return []
+        out = []
+        for t in tweets:
+            m = t.get("public_metrics", {})
+            out.append({
+                "text": t.get("text", ""),
+                "impressions": m.get("impression_count", 0),
+                "likes": m.get("like_count", 0),
+                "retweets": m.get("retweet_count", 0),
+                "replies": m.get("reply_count", 0),
+            })
+        return out
+
     try:
         res = client.get_users_tweets(
             id=user_id,
@@ -74,7 +119,8 @@ def fetch_recent_post_stats(account: str = "SUNAKUN", days: int = 7, max_results
             tweet_fields=["public_metrics", "created_at"],
             exclude=["replies", "retweets"],
         )
-    except Exception:
+    except Exception as e:
+        print(f"[engagement_loop] tweepy get_users_tweets失敗 ({account}): {e}")
         return []
     tweets = res.data or []
     out = []
