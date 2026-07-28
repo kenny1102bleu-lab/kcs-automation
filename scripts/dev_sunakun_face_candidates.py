@@ -33,15 +33,24 @@ CANDIDATES = {
         "a bright clean home office with a laptop and gadgets nearby, soft daylight, approachable "
         "and slightly polished look"
     ),
+    "D_b_style_c_face": (
+        "Photorealistic portrait of a Japanese man in his mid-20s. Face and expression: "
+        "medium-length neatly styled hair, soft polished gentle facial features, warm gentle "
+        "friendly smile, kind approachable eyes (kireime, refined look). Styling and setting: "
+        "streetwear-casual trendy fashion, sitting in a modern minimalist cafe or stylish "
+        "apartment with gadgets nearby, natural window light, looks like a stylish approachable "
+        "gadget/tech influencer with a soft friendly face"
+    ),
 }
 
 
 def run():
-    if os.path.exists(OUT_DIR):
-        shutil.rmtree(OUT_DIR)
+    only = sys.argv[1].split(",") if len(sys.argv) > 1 else None
     os.makedirs(OUT_DIR, exist_ok=True)
 
     for label, prompt in CANDIDATES.items():
+        if only and label not in only:
+            continue
         print(f"[dev_sunakun_face_candidates] generating {label} ...")
         result = _generate_image(prompt, account=f"SUNAKUN_CANDIDATE_{label}")
         if result.get("error"):

@@ -2,6 +2,11 @@ name: DEV すなくん顔候補生成（一回限り）
 
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        description: '生成するラベルをカンマ区切りで指定（空欄で全部）'
+        required: false
+        default: ''
 
 jobs:
   generate:
@@ -12,7 +17,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - run: python scripts/dev_sunakun_face_candidates.py
+      - run: python scripts/dev_sunakun_face_candidates.py "${{ inputs.only }}"
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - uses: actions/upload-artifact@v4
