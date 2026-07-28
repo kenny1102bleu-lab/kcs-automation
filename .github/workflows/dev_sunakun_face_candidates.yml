@@ -1,0 +1,22 @@
+name: DEV すなくん顔候補生成（一回限り）
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python scripts/dev_sunakun_face_candidates.py
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sunakun-face-candidates
+          path: data/sunakun_face_candidates/
+          retention-days: 3
