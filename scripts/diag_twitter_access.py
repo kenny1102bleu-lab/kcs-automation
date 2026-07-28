@@ -102,6 +102,16 @@ def check_real_function(account: str) -> None:
         print(f"  fetch_recent_post_stats結果: {len(stats)}件")
         if stats:
             print(f"  先頭1件: {stats[0]}")
+
+        # fetch_recent_post_stats内部の except Exception: return [] が握りつぶしている
+        # 本当の例外を、同じtweepy呼び出しを直接実行して暴く
+        print("  --- tweepy.get_users_tweetsを直接実行（握りつぶされた例外の可視化） ---")
+        res = client.get_users_tweets(
+            id=uid, max_results=15,
+            tweet_fields=["public_metrics", "created_at"],
+            exclude=["replies", "retweets"],
+        )
+        print(f"  直接実行結果: data={'あり' if res.data else 'なし'}  meta={res.meta}  errors={res.errors}")
     except Exception:
         print("  例外発生:")
         traceback.print_exc()
