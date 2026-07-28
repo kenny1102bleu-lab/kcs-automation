@@ -73,6 +73,19 @@ def check(prefix: str) -> None:
                           headers={"Authorization": f"Bearer {bearer}"})
         print(f"  GET /2/usage/tweets: HTTP {r3.status_code}  body={r3.text[:500]}")
 
+    # 4) ★本命: fetch_recent_post_stats/get_win_patternsが実際に呼んでいるエンドポイントを
+    #    そのまま叩いて生のエラーを見る（growth_report.pyで「データ不足」表示になる原因の特定用）
+    try:
+        me = sess.get("https://api.twitter.com/2/users/me").json()
+        uid = me["data"]["id"]
+        r4 = sess.get(
+            f"https://api.twitter.com/2/users/{uid}/tweets",
+            params={"max_results": 5, "tweet.fields": "public_metrics,created_at", "exclude": "replies,retweets"},
+        )
+        print(f"  GET /2/users/{{id}}/tweets (実際の取得処理と同一): HTTP {r4.status_code}  body={r4.text[:500]}")
+    except Exception as e:
+        print(f"  GET /2/users/{{id}}/tweets 例外: {e}")
+
 
 if __name__ == "__main__":
     for p in ("HAL", "SUNAKUN"):
