@@ -69,11 +69,11 @@ jobs:
       - name: Commit posted-products history and amazon queue state
         if: always()
         run: |
-          if [ -n "$(git status --porcelain data/suna_posted_products.json data/amazon_product_queue.json 2>/dev/null)" ]; then
+          if [ -n "$(git status --porcelain data/suna_posted_products.json data/amazon_product_queue.json data/sunakun_selfie_history.json 2>/dev/null)" ]; then
             git config user.email "suna-bot@kcs.local"
             git config user.name "Suna Bot"
-            git add data/suna_posted_products.json data/amazon_product_queue.json
-            git commit -m "chore: update suna posted-products history / amazon queue"
+            git add data/suna_posted_products.json data/amazon_product_queue.json data/sunakun_selfie_history.json
+            git commit -m "chore: update suna posted-products history / amazon queue / selfie state"
             git pull --rebase origin master
             git push origin HEAD:master
           fi
