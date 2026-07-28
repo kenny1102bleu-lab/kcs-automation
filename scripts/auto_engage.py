@@ -65,7 +65,9 @@ def run_likes(session, client: tweepy.Client, account: str, my_id: str, limit: i
                     break
                 tid = tweet["id"]
                 try:
-                    client.like(my_id, tid)
+                    # tweepy.Client.like(tweet_id)は認証ユーザーが暗黙の主語で、
+                    # user_idを渡す必要はない（渡すと引数過多でTypeErrorになる既存バグだった）
+                    client.like(tid)
                     log(f"[{account}] liked tweet_id={tid}")
                     done += 1
                     time.sleep(random.uniform(3, 8))
@@ -109,7 +111,8 @@ def run_follows(session, client: tweepy.Client, account: str, my_id: str, limit:
                     continue
                 username = user.get("username", "")
                 try:
-                    client.follow_user(my_id, uid)
+                    # like()と同じくtarget_user_idのみ渡す（user_id不要）
+                    client.follow_user(uid)
                     log(f"[{account}] followed @{username} (followers={followers})")
                     done += 1
                     time.sleep(random.uniform(5, 12))
