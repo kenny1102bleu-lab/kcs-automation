@@ -41,6 +41,26 @@ CANDIDATES = {
         "apartment with gadgets nearby, natural window light, looks like a stylish approachable "
         "gadget/tech influencer with a soft friendly face"
     ),
+    # 2026-07-25保存のreference_ai_image_naturalization_prompts.mdの「人物画像テンプレ」を
+    # 反映（nana.pyのNATURALIZATION_SUFFIXは女性代名詞でHAL専用のため、男性向けに書き直して
+    # 非対称さ・境目の自然さ・AIっぽいツヤの抑制など、メモリ記載でより詳細な項目を追加）
+    "E_refined": (
+        "Photorealistic portrait of a Japanese man in his mid-20s. Face and expression: "
+        "medium-length neatly styled hair, soft polished gentle facial features, warm gentle "
+        "friendly smile, kind approachable eyes (kireime, refined look). Styling and setting: "
+        "streetwear-casual trendy fashion, sitting in a modern minimalist cafe or stylish "
+        "apartment with gadgets nearby, natural window light, looks like a stylish approachable "
+        "gadget/tech influencer with a soft friendly face. "
+        "Make this look like an authentic candid photo that could realistically be found on "
+        "social media, not a generated image: natural smartphone-camera texture, natural "
+        "ambient light matching the scene, a natural relaxed gaze rather than a stiff stare "
+        "at the camera, natural-looking hands and fingers with no distortion, balanced facial "
+        "proportions with slight human asymmetry rather than perfect symmetry, hair flowing "
+        "naturally, skin with natural texture and visible pores rather than overly smoothed, "
+        "the light direction on him matching the light direction of the background, natural "
+        "blending at the edges between clothes/hair/background, and avoid an overly glossy "
+        "AI-generated sheen or overly perfect polish."
+    ),
 }
 
 
