@@ -4,11 +4,11 @@ Gemini に「型・切り口・書き出しパターン」だけを抽出させ�
 
 失敗時は None を返す → 呼び出し側は注入をスキップして既存挙動を維持。
 """
-import os
 import tweepy
 import google.generativeai as genai
 
 from scripts.common.env_clean import clean_env
+from scripts.common.x_api_raw import oauth1_session, x_get
 
 
 DEFAULT_QUERY = "(ガジェット OR コスパ OR 充電器 OR モバイルバッテリー OR Anker OR イヤホン) lang:ja -is:retweet -is:reply"
@@ -42,6 +42,27 @@ def _x_client(account: str = "SUNAKUN") -> tweepy.Client | None:
 
 
 def fetch_top_tweets(query: str = DEFAULT_QUERY, max_results: int = 30, min_likes: int = 100) -> list[str]:
+    # 2026-07-28判明: tweepy.Client経由のsearch_recent_tweetsはOAuth1認証情報が正しくても
+    # 401 Unauthorizedになる既知の問題があるため、OAuth1情報があればraw OAuth1Sessionで叩く。
+    session = oauth1_session("SUNAKUN")
+    if session is not None:
+        try:
+            data = x_get(session, "/tweets/search/recent",
+                         {"query": query, "max_results": max_results, "tweet.fields": "public_metrics,lang"})
+            tweets = data.get("data") or []
+        except Exception:
+            return []
+        scored = []
+        for t in tweets:
+            m = t.get("public_metrics") or {}
+            likes = m.get("like_count", 0)
+            if likes < min_likes:
+                continue
+            engagement = likes + m.get("retweet_count", 0) * 3 + m.get("reply_count", 0)
+            scored.append((engagement, t.get("text", "")))
+        scored.sort(reverse=True)
+        return [text for _, text in scored[:10]]
+
     client = _x_client()
     if client is None:
         return []

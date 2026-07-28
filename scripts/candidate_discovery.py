@@ -19,8 +19,10 @@ from collections import Counter
 from datetime import datetime, timezone, timedelta
 
 import tweepy
+from requests_oauthlib import OAuth1Session
 
 from scripts.common.env_clean import clean_env
+from scripts.common.x_api_raw import oauth1_session, x_get
 
 JST = timezone(timedelta(hours=9))
 
@@ -54,26 +56,18 @@ def log(msg: str) -> None:
     print(f"[{ts}] {msg}", file=sys.stderr)
 
 
-def build_client(account: str) -> tweepy.Client:
-    """OAuth1優先、なければBearer。scripts/common/buzz_patterns.py と同じ方式。
+def build_client(account: str) -> "OAuth1Session | tweepy.Client":
+    """OAuth1優先（raw OAuth1Session）、なければBearer（tweepy）。
 
-    2026-07-08時点、GitHub SecretsにはSUNAKUN/HAL共に
-    {PREFIX}_TWITTER_API_KEY 等のOAuth1フルクレデンシャルのみが存在し、
-    {PREFIX}_TWITTER_BEARER_TOKEN / X_BEARER_TOKEN は未設定。
-    指示書の「Bearer Token取得済み」前提とは異なるため、既存の
-    OAuth1クレデンシャルを優先して使う。
+    2026-07-28判明: tweepy.Client経由のsearch_recent_tweets/get_users等は、正しい
+    OAuth1認証情報でも401 Unauthorizedを返す既知の問題があるため、OAuth1認証情報が
+    ある場合は raw OAuth1Session を直接使う（scripts/common/x_api_raw.py）。
+    Bearer Tokenしか無い場合のみ従来のtweepy Client（未検証、触らない）。
     """
     prefix = account.upper()
-    ck = clean_env(f"{prefix}_TWITTER_API_KEY")
-    cs = clean_env(f"{prefix}_TWITTER_API_SECRET")
-    at = clean_env(f"{prefix}_TWITTER_ACCESS_TOKEN")
-    ats = clean_env(f"{prefix}_TWITTER_ACCESS_SECRET")
-    if ck and cs and at and ats:
-        return tweepy.Client(
-            consumer_key=ck, consumer_secret=cs,
-            access_token=at, access_token_secret=ats,
-            wait_on_rate_limit=False,
-        )
+    session = oauth1_session(account)
+    if session is not None:
+        return session
     bearer = clean_env(f"{prefix}_TWITTER_BEARER_TOKEN") or clean_env("X_BEARER_TOKEN")
     if bearer:
         return tweepy.Client(bearer_token=bearer, wait_on_rate_limit=False)
@@ -101,29 +95,39 @@ def call_api(label: str, fn, **kwargs):
     except tweepy.TweepyException as e:
         log(f"X APIエラー: {label} - {e}")
         raise
+    except Exception as e:
+        log(f"X APIエラー（raw）: {label} - {e}")
+        raise
 
 
-def collect_author_mentions(client: tweepy.Client, queries: list[str], max_results: int = 50) -> Counter:
+def collect_author_mentions(client, queries: list[str], max_results: int = 50) -> Counter:
     mentions = Counter()
     for q in queries:
         try:
-            resp = call_api(
-                f"search_recent_tweets query='{q}'",
-                client.search_recent_tweets,
-                query=q,
-                max_results=max_results,
-                tweet_fields=["author_id"],
-            )
-        except tweepy.TweepyException:
+            if isinstance(client, OAuth1Session):
+                global api_call_count
+                api_call_count += 1
+                log(f"API call #{api_call_count}: search_recent_tweets query='{q}'")
+                data = x_get(client, "/tweets/search/recent",
+                             {"query": q, "max_results": max_results, "tweet.fields": "author_id"})
+                tweets = data.get("data", [])
+            else:
+                resp = call_api(
+                    f"search_recent_tweets query='{q}'",
+                    client.search_recent_tweets,
+                    query=q, max_results=max_results, tweet_fields=["author_id"],
+                )
+                tweets = [{"author_id": t.author_id} for t in (resp.data or [])]
+        except Exception:
             log(f"クエリをスキップします: {q}")
             continue
-        for tweet in resp.data or []:
-            mentions[tweet.author_id] += 1
+        for tweet in tweets:
+            mentions[tweet["author_id"]] += 1
         time.sleep(1)
     return mentions
 
 
-def collect_candidate_tweets(client: tweepy.Client, queries: list[str], max_results: int = 15) -> list[dict]:
+def collect_candidate_tweets(client, queries: list[str], max_results: int = 15) -> list[dict]:
     """collect_author_mentions()の集計版と違い、具体的なtweet_id/text/created_atを
     保持したまま返す（早期リプライ機能が実際に返信する1件を選ぶために必要）。
     早期リプライ用途のクエリ拡張(-is:reply -has:links等)は呼び出し側(early_reply.py)
@@ -132,43 +136,69 @@ def collect_candidate_tweets(client: tweepy.Client, queries: list[str], max_resu
     tweets = []
     for q in queries:
         try:
-            resp = call_api(
-                f"search_recent_tweets(candidate_tweets) query='{q}'",
-                client.search_recent_tweets,
-                query=q,
-                max_results=max_results,
-                tweet_fields=["author_id", "created_at"],
-            )
-        except tweepy.TweepyException:
+            if isinstance(client, OAuth1Session):
+                global api_call_count
+                api_call_count += 1
+                log(f"API call #{api_call_count}: search_recent_tweets(candidate_tweets) query='{q}'")
+                data = x_get(client, "/tweets/search/recent",
+                             {"query": q, "max_results": max_results,
+                              "tweet.fields": "author_id,created_at"})
+                raw_tweets = data.get("data", [])
+            else:
+                resp = call_api(
+                    f"search_recent_tweets(candidate_tweets) query='{q}'",
+                    client.search_recent_tweets,
+                    query=q, max_results=max_results, tweet_fields=["author_id", "created_at"],
+                )
+                raw_tweets = [
+                    {"id": str(t.id), "author_id": str(t.author_id), "text": t.text,
+                     "created_at": t.created_at.isoformat() if t.created_at else None}
+                    for t in (resp.data or [])
+                ]
+        except Exception:
             log(f"クエリをスキップします: {q}")
             continue
-        for t in resp.data or []:
-            if t.id in seen_ids:
+        for t in raw_tweets:
+            tid = str(t["id"])
+            if tid in seen_ids:
                 continue
-            seen_ids.add(t.id)
+            seen_ids.add(tid)
             tweets.append({
-                "tweet_id": str(t.id),
-                "author_id": str(t.author_id),
-                "text": t.text,
-                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "tweet_id": tid,
+                "author_id": str(t["author_id"]),
+                "text": t["text"],
+                "created_at": t.get("created_at"),
             })
         time.sleep(1)
     return tweets
 
 
-def fetch_user_info(client: tweepy.Client, user_ids: list[str]) -> dict:
+def fetch_user_info(client, user_ids: list[str]) -> dict:
     if not user_ids:
         return {}
     try:
+        if isinstance(client, OAuth1Session):
+            global api_call_count
+            api_call_count += 1
+            log(f"API call #{api_call_count}: get_users ids={len(user_ids)}件")
+            data = x_get(client, "/users",
+                         {"ids": ",".join(user_ids), "user.fields": "public_metrics,username,description"})
+            users = data.get("data", [])
+            return {str(u["id"]): u for u in users}
         resp = call_api(
             f"get_users ids={len(user_ids)}件",
             client.get_users,
-            ids=user_ids,
-            user_fields=["public_metrics", "username", "description"],
+            ids=user_ids, user_fields=["public_metrics", "username", "description"],
         )
-    except tweepy.TweepyException:
+        return {
+            str(u.id): {
+                "id": str(u.id), "username": u.username, "description": u.description or "",
+                "public_metrics": u.public_metrics or {},
+            }
+            for u in (resp.data or [])
+        }
+    except Exception:
         return {}
-    return {str(u.id): u for u in (resp.data or [])}
 
 
 def discover(account: str) -> list[dict]:
@@ -190,13 +220,13 @@ def discover(account: str) -> list[dict]:
         user = users.get(str(uid))
         if user is None:
             continue
-        metrics = user.public_metrics or {}
+        metrics = user.get("public_metrics") or {}
         followers = metrics.get("followers_count", 0)
         candidates.append({
-            "username": user.username,
+            "username": user.get("username", ""),
             "followers": followers,
             "mentions_in_search": mentions[uid],
-            "bio": (user.description or "").replace("\n", " ").replace("|", "/"),
+            "bio": (user.get("description") or "").replace("\n", " ").replace("|", "/"),
             "in_target_range": FOLLOWER_MIN <= followers <= FOLLOWER_MAX,
         })
 

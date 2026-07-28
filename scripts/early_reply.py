@@ -18,6 +18,8 @@ import json
 import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from requests_oauthlib import OAuth1Session
+
 from scripts.candidate_discovery import (
     QUERIES, build_client, fetch_user_info, collect_candidate_tweets,
     FOLLOWER_MIN, FOLLOWER_MAX,
@@ -28,6 +30,7 @@ from scripts.common.mamoru import review
 from scripts.common.ng_patterns import scan as ng_scan
 from scripts.common.twitter_client import post_reply
 from scripts.common.x_limits import truncate_to_fit
+from scripts.common.x_api_raw import x_get
 from scripts.common import early_reply_store
 
 _JUDGE_PROMPTS = {
@@ -83,6 +86,9 @@ def _augmented_queries(account: str) -> list[str]:
 
 def _own_user_id(client) -> str | None:
     try:
+        if isinstance(client, OAuth1Session):
+            data = x_get(client, "/users/me", {})
+            return str(data["data"]["id"]) if data.get("data") else None
         res = client.get_me()
         return str(res.data.id) if res.data else None
     except Exception:
@@ -111,13 +117,13 @@ def select_candidate(account: str, client, exclude_author_ids: set[str]) -> dict
         user = users.get(t["author_id"])
         if user is None:
             continue
-        followers = (user.public_metrics or {}).get("followers_count", 0)
+        followers = (user.get("public_metrics") or {}).get("followers_count", 0)
         if not (FOLLOWER_MIN <= followers <= FOLLOWER_MAX):
             continue
         return {
             "tweet_id": t["tweet_id"],
             "author_id": t["author_id"],
-            "author_username": user.username,
+            "author_username": user.get("username", ""),
             "text": t["text"],
             "followers": followers,
         }
