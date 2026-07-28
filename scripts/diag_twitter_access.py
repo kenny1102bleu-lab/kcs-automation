@@ -87,9 +87,30 @@ def check(prefix: str) -> None:
         print(f"  GET /2/users/{{id}}/tweets 例外: {e}")
 
 
+def check_real_function(account: str) -> None:
+    """growth_report.pyが実際に呼んでいる関数そのものをフルトレースバック付きで実行。"""
+    import traceback
+    from scripts.common.engagement_loop import fetch_recent_post_stats, _x_client, _resolve_user_id
+    print(f"\n----- {account}: 実関数 fetch_recent_post_stats() -----")
+    try:
+        client = _x_client(account)
+        print(f"  client作成: {'OK' if client else 'None(認証情報不足)'}")
+        if client:
+            uid = _resolve_user_id(client, account)
+            print(f"  _resolve_user_id結果: {uid}")
+        stats = fetch_recent_post_stats(account=account, days=7, max_results=15)
+        print(f"  fetch_recent_post_stats結果: {len(stats)}件")
+        if stats:
+            print(f"  先頭1件: {stats[0]}")
+    except Exception:
+        print("  例外発生:")
+        traceback.print_exc()
+
+
 if __name__ == "__main__":
     for p in ("HAL", "SUNAKUN"):
         try:
             check(p)
         except Exception as e:
             print(f"  例外: {e}")
+        check_real_function(p)
