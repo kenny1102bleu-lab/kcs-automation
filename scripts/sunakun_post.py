@@ -27,6 +27,26 @@ from scripts.common.product_source import (
 )
 from scripts.common.x_limits import validate as x_validate, weighted_length, count_hashtags, truncate_to_fit
 from scripts.common.date_context import current_season_text
+from scripts.common import sunakun_selfie_state
+
+# 週1回、商品PRではなく「すなくん個人」の自撮り投稿を挟む（社長承認、2026-07-28）。
+# フォロワー転換の弱さ（「PR一辺倒で個人としての魅力がゼロ」というグロース分析の
+# 指摘）への対応。PR表記・リプ欄誘導文言（SUNAKUN_PR_PREFIX/SUNAKUN_CTA）は
+# この投稿タイプには一切付けない。ビジュアルはassets/reference/sunakun_reference.png
+# （社長承認済み、dev_sunakun_face_candidates.pyで生成）。
+SUNAKUN_SELFIE_PROMPT = """あなたはKCS合同会社のアフィリエイト担当「タクミ」です。
+ガジェット系アカウント「すなくん」（26歳、ガジェットオタク男子、テンション高め、
+フレンドリー）の“個人の近況”投稿を1件作成します。
+
+【重要】これは商品PR投稿ではありません。何かを売り込む・紹介する内容にせず、
+「今日のガジェット周りの近況・気分・小ネタ」を短く自然に書いてください。
+- 商品名やアフィリエイトの話は一切書かない
+- 「フォローしてね」等の直接的なフォロー訴求も書かない
+- 「AI」「自動」「ボット」「中の人」等の存在否定ワードは絶対に使わない
+- 30〜50文字程度、テンション高めのカジュアルな一言
+
+【出力フォーマット】必ず以下のJSONのみで出力（説明文なし）:
+{"post_text":"本文", "hashtags":["タグ1","タグ2"], "media_prompt":"写真の情景描写（英語、人物なしで背景・状況のみ。例: sitting at a desk covered in gadgets, cup of coffee nearby, relaxed home office in the evening）"}"""
 
 # PR表記と誘導文言はAIの記憶に頼らず、コード側で必ず1段目に固定で
 # 差し込む（AIが省略することがあったため確実性を優先）。
@@ -106,7 +126,97 @@ def _build_context_block() -> str:
         return ""
     return "\n\n" + "\n\n".join(blocks) + "\n\n上記は参考情報。2段構成・URL直貼り禁止の運用ルールは絶対遵守。"
 
+
+def _run_selfie_post() -> None:
+    """週1回の個人近況投稿（PR表記・誘導文言なし、通常投稿とは完全に別経路）。"""
+    genai.configure(api_key=clean_env("GEMINI_API_KEY"))
+    model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=SUNAKUN_SELFIE_PROMPT)
+    user_message = "今日のすなくんの近況投稿を作成してください。\n" + current_season_text()
+    response = model.generate_content(user_message)
+    parsed = parse_post(response.text)
+
+    main_content = parsed["post_text"]
+    for attempt in range(2):
+        result = review(main_content)
+        if result["status"] == "approved":
+            break
+        if attempt == 0 and "fixed_text" in result:
+            main_content = result["fixed_text"]
+        else:
+            msg = f"⚠️ すなくん自撮り投稿がマモル審査を通過できませんでした。\n理由: {result['reason']}\n投稿テキスト: {main_content[:300]}"
+            print(msg)
+            notify(msg)
+            return
+
+    # PR表記・CTAは付けない。本文+ハッシュタグのみで組み立てる。
+    tag_line = format_hashtags(parsed["hashtags"])
+    fixed_overhead = weighted_length("\n\n") + weighted_length(tag_line) if tag_line else 0
+    safe_content = truncate_to_fit(main_content, 280 - fixed_overhead)
+    post_text = assemble_post(safe_content, parsed["hashtags"])
+
+    x_ok, x_reason = x_validate(post_text)
+    if not x_ok:
+        msg = f"⚠️ すなくん自撮り投稿がX文字数/ハッシュタグルールを満たせませんでした。\n理由: {x_reason}\n投稿テキスト: {post_text[:300]}"
+        print(msg)
+        notify(msg)
+        return
+
+    ng = ng_scan(post_text)
+    if ng:
+        msg = f"⚠️ すなくん自撮り投稿NG監査拒否: {ng[0]} = `{ng[1]}`\n投稿テキスト: {post_text[:300]}"
+        print(msg)
+        notify(msg)
+        return
+
+    media = generate_media("image", parsed.get("media_prompt", ""), account="SUNAKUN_SELFIE")
+    if media.get("error"):
+        msg = f"⚠️ すなくん自撮り画像生成に失敗\n{media['error']}"
+        print(msg)
+        notify(msg)
+        return
+
+    sunakun_selfie_state.record_posted()
+
+    approval_id = str(uuid.uuid4())[:8]
+    media_path = media.get("path", "")
+    pending = {
+        "post_text": post_text,
+        "account": "SUNAKUN",
+        "media_type": "image",
+        "media_filename": os.path.basename(media_path) if media_path else "",
+        "media_run_id": os.environ.get("GITHUB_RUN_ID", ""),
+        "affiliate_link": "",
+    }
+    print(f"APPROVAL_ID={approval_id}")
+    print(f"PENDING_DATA={json.dumps(pending, ensure_ascii=False)}")
+
+    bot_webhook = os.environ.get("BOT_WEBHOOK_URL", "")
+    if bot_webhook:
+        try:
+            import requests
+            requests.post(bot_webhook, json={"approval_id": approval_id, **pending}, timeout=60)
+        except Exception as e:
+            print(f"bot webhook failed: {e}")
+
+    qa_summary = (
+        "✅ 自動監査 通過済み: AI開示語 / 繁体字 / AI口調(案1･2等) / 絵文字クラスタ / スパム / 個人情報\n"
+        f"✅ X文字数: {weighted_length(post_text)}/280ユニット / ハッシュタグ: {count_hashtags(post_text)}個\n"
+        f"✅ マモル(Claude)コンプライアンス審査: 承認（{result.get('reason','問題なし')}）\n"
+        "🧑 週1個人近況投稿（PR表記なし）\n"
+        "👀 社長確認ポイント: 顔・雰囲気が想定通りか"
+    )
+    notify_post_preview(post_text, "すなくん (@sunakun_xxxx)", approval_id, media_info=media, qa_summary=qa_summary,
+                       account_key="SUNAKUN")
+    print(f"すなくん自撮り投稿プレビュー送信完了 (approval_id={approval_id})")
+
+
 def run():
+    manual_theme = os.environ.get("POST_THEME", "").strip()
+    manual_affiliate_url_check = os.environ.get("POST_AFFILIATE_URL", "").strip()
+    if not manual_theme and not manual_affiliate_url_check and sunakun_selfie_state.should_post_today():
+        _run_selfie_post()
+        return
+
     genai.configure(api_key=clean_env("GEMINI_API_KEY"))
     system_prompt = TAKUMI_PROMPT + _build_context_block()
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)

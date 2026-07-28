@@ -21,8 +21,12 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 # アカウントごとの顔参照画像。存在すれば生成時にinlineDataとして渡し、
 # 「毎回別人が生成される」問題を防いで同一人物の顔を維持する。
+# SUNAKUN_SELFIE: すなくんの週1自撮り投稿専用（社長承認画像、2026-07-28）。
+# 通常の商品写真生成(account="SUNAKUN")には人物参照を混入させないよう、
+# 別アカウントキーとして分離している。
 REFERENCE_IMAGES = {
     "HAL": pathlib.Path("assets/reference/hal_reference.png"),
+    "SUNAKUN_SELFIE": pathlib.Path("assets/reference/sunakun_reference.png"),
 }
 
 
@@ -41,6 +45,25 @@ HAL_BASE_STYLE = (
 SUNAKUN_BASE_STYLE = (
     "product photography style, clean white background or modern desk setup, "
     "tech gadgets focus, vibrant but not flashy, photorealistic"
+)
+# すなくんの週1自撮り投稿専用スタイル（社長承認、2026-07-28）。通常のSUNAKUN_BASE_STYLE
+# （人物なし・商品写真）とは別枠。dev_sunakun_face_candidates.pyのE_refined案を反映。
+SUNAKUN_SELFIE_STYLE = (
+    "Japanese man in his mid-20s, medium-length neatly styled hair, soft polished gentle "
+    "facial features, warm gentle friendly smile, kind approachable eyes (kireime, refined "
+    "look), streetwear-casual trendy fashion, photorealistic, natural light, candid, "
+    "do not include any brand logo"
+)
+SUNAKUN_SELFIE_NATURALIZATION_SUFFIX = (
+    "Make this look like an authentic candid photo that could realistically be found on "
+    "social media, not a generated image: natural smartphone-camera texture, natural "
+    "ambient light matching the scene, a natural relaxed gaze rather than a stiff stare "
+    "at the camera, natural-looking hands and fingers with no distortion, balanced facial "
+    "proportions with slight human asymmetry rather than perfect symmetry, hair flowing "
+    "naturally, skin with natural texture and visible pores rather than overly smoothed, "
+    "the light direction on him matching the light direction of the background, natural "
+    "blending at the edges between clothes/hair/background, and avoid an overly glossy "
+    "AI-generated sheen or overly perfect polish."
 )
 
 # HAL_PERSONA_BIBLE.md 第7-3章「セルフィー投稿のシチュエーション設定」＋
@@ -210,19 +233,32 @@ def generate_media(media_type: str, prompt: str, account: str, photo_context: st
         return {"path": "", "type": "none"}
 
     is_hal = account.upper() == "HAL"
-    base_style = HAL_BASE_STYLE if is_hal else SUNAKUN_BASE_STYLE
+    is_sunakun_selfie = account.upper() == "SUNAKUN_SELFIE"
+    if is_hal:
+        base_style = HAL_BASE_STYLE
+    elif is_sunakun_selfie:
+        base_style = SUNAKUN_SELFIE_STYLE
+    else:
+        base_style = SUNAKUN_BASE_STYLE
     # 構図（仕事/自撮り）の出し分けは人物の自撮り/他撮りが意味を持つHALのみ。
-    # すなくんは商品写真スタイルのため、人物代名詞を含むこの指示は混入させない。
+    # すなくんの通常投稿（商品写真）は人物代名詞を含むこの指示を混入させない。
     composition = (WORK_COMPOSITION if photo_context == "work" else PRIVATE_COMPOSITION) if is_hal else ""
     # ロケーションのバリエーション（HALのみ）。毎回同じ背景にならないよう、
     # テーマに応じて/頻度に沿ってシーンを1つ選ぶ（HAL_PERSONA_BIBLE.md 第7-3章準拠）。
     scene = f"Scene: {_pick_hal_scene(photo_context, prompt)}" if is_hal else ""
     time_context = _current_time_context()
+    if is_hal:
+        naturalization = NATURALIZATION_SUFFIX
+    elif is_sunakun_selfie:
+        naturalization = SUNAKUN_SELFIE_NATURALIZATION_SUFFIX
+    else:
+        naturalization = ""
     segments = (
         [prompt, f"Style: {base_style}"]
         + ([scene] if scene else [])
         + ([composition] if composition else [])
-        + [time_context, NATURALIZATION_SUFFIX]
+        + [time_context]
+        + ([naturalization] if naturalization else [])
     )
     full_prompt = ". ".join(segments)
 
