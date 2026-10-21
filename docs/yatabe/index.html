@@ -38,6 +38,20 @@
   td.n,th.n{text-align:right}
   .sub{font-size:12px;color:var(--薄文字)}
   .foot{font-size:11px;color:#888;text-align:center;margin-top:18px}
+  /* HUBは2列×3段で並べる */
+  .hubgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .hubgrid .card{margin-bottom:0;padding:12px}
+  .hubgrid .hub{font-size:14px}
+  .big{font-size:26px;font-weight:700;line-height:1.15;margin-top:2px}
+  /* 状態で色を分ける */
+  .st-rest{background:#fdecec}
+  .st-tomo{background:#fff5e0}
+  .st-go{background:#e8f7ee}
+  .tag{font-size:11px;font-weight:700;border-radius:6px;padding:2px 6px;
+       display:inline-block;margin-top:6px;line-height:1.5}
+  .tag-rest{background:#a33;color:#fff}
+  .tag-tomo{background:#8a6100;color:#fff}
+  .tag-go{background:#06803a;color:#fff}
   .err{background:#fdecec;color:#a33;border-radius:10px;padding:14px 16px;font-size:14px;line-height:1.6}
   .yen{font-weight:700}
 </style>
@@ -121,21 +135,31 @@ function 枠(月送りあり){
 }
 
 function 今日を描く(d){
-  var h = 枠(false);
-  h += '<div class="total"><div class="t">全HUB合計</div><div class="v">' + d.合計 + ' 個</div></div>';
+  var h = 枠(false) + '<div class="hubgrid">';
   d.HUB.forEach(function(x){
-    h += '<div class="card">'
-      + '<div style="display:flex;justify-content:space-between;align-items:baseline">'
+    // 色の優先順位: 今日休み > 稼働中 > 明日休み > ふつう
+    var 色 = x.今日休み ? ' st-rest'
+           : (x.稼働中.length ? ' st-go'
+           : (x.明日休み ? ' st-tomo' : ''));
+
+    h += '<div class="card' + 色 + '">'
       + '<div class="hub">' + 逃がす(x.HUB名) + '</div>'
-      + '<div style="font-size:22px;font-weight:700">' + x.全体数 + '</div></div>'
-      + '<div class="sub">持ち出し ' + x.持ち出し + ' ／ 不在 ' + x.不在 + '</div>';
-    if (x.今日休み) h += '<div class="err" style="padding:6px 10px;margin-top:6px;display:inline-block;font-size:12px">今日は休み</div>';
-    if (x.明日休み) h += '<div class="err" style="padding:6px 10px;margin-top:6px;display:inline-block;font-size:12px;background:#fff5e0;color:#8a6100">明日は休み</div>';
-    h += x.稼働中.length
-      ? '<div class="sub" style="margin-top:6px;color:#06803a">' + x.稼働中.map(逃がす).join('、') + ' 稼働中</div>'
-      : '<div class="sub" style="margin-top:6px">稼働中の人はいません</div>';
+      + '<div class="big">' + x.全体数 + '</div>'
+      + '<div class="sub">持ち出し ' + x.持ち出し + '／不在 ' + x.不在 + '</div>';
+
+    if (x.今日休み) h += '<div class="tag tag-rest">今日は休み</div>';
+    else if (x.明日休み) h += '<div class="tag tag-tomo">明日は休み</div>';
+
+    if (x.稼働中.length) {
+      x.稼働中.forEach(function(名){
+        h += '<div class="tag tag-go">' + 逃がす(名) + '</div> ';
+      });
+    } else if (!x.今日休み) {
+      h += '<div class="sub" style="margin-top:6px">稼働なし</div>';
+    }
     h += '</div>';
   });
+  h += '</div>';
   出す(h);
 }
 
