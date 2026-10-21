@@ -59,7 +59,7 @@ var LIFF_ID = '2012068693-V4NDP7tp';
 var GAS = 'https://script.google.com/macros/s/AKfycbwggf6vqnn8laEIWpH2cRRpySkK5uhSq8wWge4EPQq6pttAQua-iQFmG_N3tcysxN8S/exec';
 
 var トークン = '';
-var 種類 = 'driver';
+var 種類 = 'today';
 var 年月 = 今月();
 
 function 今月(){
@@ -82,6 +82,8 @@ function 困った(文){ 出す('<div class="err">' + 逃がす(文) + '</div>')
 // GASへ問い合わせる。POSTが通らない環境のためGETの控えも用意する
 function 取りに行く(){
   var url = GAS + '?api=' + 種類 + '&ym=' + 年月;
+  // 今日の状況は金額を含まないので、本人確認なしで取れる
+  if (種類 === 'today') return fetch(url).then(function(r){ return r.json(); });
   return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -93,26 +95,52 @@ function 取りに行く(){
     });
 }
 
-function 見出しを描く(氏名){
-  document.getElementById('見出し').textContent =
-    氏名 + ' さんの' + (種類 === 'driver' ? '稼働' : 'ハブ');
-  document.getElementById('副題').textContent = '自分の分だけが表示されます';
+function 見出しを描く(氏名, 副題){
+  document.getElementById('見出し').textContent = 氏名;
+  document.getElementById('副題').textContent = 副題 || '';
 }
 
-function 枠(){
-  return '<div class="tabs">'
-    + '<div class="tab ' + (種類 === 'driver' ? 'on' : '') + '" onclick="切り替え(\'driver\')">ドライバーの稼働</div>'
-    + '<div class="tab ' + (種類 === 'hub' ? 'on' : '') + '" onclick="切り替え(\'hub\')">ハブの稼働</div>'
-    + '</div>'
-    + '<div class="nav">'
-    + '<button onclick="月を動かす(-1)">&lsaquo; ' + 和(月をずらす(年月,-1)) + '</button>'
-    + '<span>' + 和(年月) + '</span>'
-    + '<button onclick="月を動かす(1)">' + 和(月をずらす(年月,1)) + ' &rsaquo;</button>'
+function タブ(id, 名){
+  return '<div class="tab ' + (種類 === id ? 'on' : '') + '" onclick="切り替え(\'' + id + '\')">' + 名 + '</div>';
+}
+
+function 枠(月送りあり){
+  var h = '<div class="tabs">'
+    + タブ('today', '今日の状況')
+    + タブ('driver', 'ドライバー')
+    + タブ('hub', 'ハブ')
     + '</div>';
+  if (月送りあり) {
+    h += '<div class="nav">'
+      + '<button onclick="月を動かす(-1)">&lsaquo; ' + 和(月をずらす(年月,-1)) + '</button>'
+      + '<span>' + 和(年月) + '</span>'
+      + '<button onclick="月を動かす(1)">' + 和(月をずらす(年月,1)) + ' &rsaquo;</button>'
+      + '</div>';
+  }
+  return h;
+}
+
+function 今日を描く(d){
+  var h = 枠(false);
+  h += '<div class="total"><div class="t">全HUB合計</div><div class="v">' + d.合計 + ' 個</div></div>';
+  d.HUB.forEach(function(x){
+    h += '<div class="card">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline">'
+      + '<div class="hub">' + 逃がす(x.HUB名) + '</div>'
+      + '<div style="font-size:22px;font-weight:700">' + x.全体数 + '</div></div>'
+      + '<div class="sub">持ち出し ' + x.持ち出し + ' ／ 不在 ' + x.不在 + '</div>';
+    if (x.今日休み) h += '<div class="err" style="padding:6px 10px;margin-top:6px;display:inline-block;font-size:12px">今日は休み</div>';
+    if (x.明日休み) h += '<div class="err" style="padding:6px 10px;margin-top:6px;display:inline-block;font-size:12px;background:#fff5e0;color:#8a6100">明日は休み</div>';
+    h += x.稼働中.length
+      ? '<div class="sub" style="margin-top:6px;color:#06803a">' + x.稼働中.map(逃がす).join('、') + ' 稼働中</div>'
+      : '<div class="sub" style="margin-top:6px">稼働中の人はいません</div>';
+    h += '</div>';
+  });
+  出す(h);
 }
 
 function ドライバーを描く(d){
-  var h = 枠();
+  var h = 枠(true);
   h += '<div class="total"><div class="t">今月の支払い</div><div class="v">' + 円(d.金額) + '</div></div>';
   h += '<div class="card"><div class="grid">'
     + '<div><div class="t2">稼働日数</div><div class="v2">' + d.稼働日数 + '</div></div>'
@@ -152,7 +180,7 @@ function ドライバーを描く(d){
 }
 
 function ハブを描く(d){
-  var h = 枠();
+  var h = 枠(true);
   h += '<div class="total"><div class="t">今月の支払い合計</div><div class="v">' + 円(d.支払い合計) + '</div></div>';
 
   if (!d.ハブ.length) {
@@ -193,12 +221,25 @@ function ハブを描く(d){
 }
 
 function 描き直す(){
+  if ((種類 === 'driver' || 種類 === 'hub') && !トークン) {
+    見出しを描く('稼働と支払い', '');
+    出す(枠(false) + '<div class="err">本人の確認ができていないため、金額は表示できません。'
+      + 'LINEのメニューから開き直してください。</div>');
+    return;
+  }
   出す('<div class="card"><div class="sub">読み込んでいます…</div></div>');
   取りに行く().then(function(r){
     if (!r || !r.ok) { 困った((r && r.理由) || '表示できませんでした。'); return; }
-    見出しを描く(r.氏名);
-    if (種類 === 'driver') ドライバーを描く(r.データ);
-    else ハブを描く(r.データ);
+    if (種類 === 'today') {
+      見出しを描く('今日の配達状況', r.データ.時刻 + ' 時点');
+      今日を描く(r.データ);
+    } else if (種類 === 'driver') {
+      見出しを描く(r.氏名 + ' さんの稼働', '自分の分だけが表示されます');
+      ドライバーを描く(r.データ);
+    } else {
+      見出しを描く(r.氏名 + ' さんのハブ', '自分の分だけが表示されます');
+      ハブを描く(r.データ);
+    }
   }).catch(function(){
     困った('データを取りに行けませんでした。通信を確認して、もう一度開いてください。');
   });
@@ -207,17 +248,15 @@ function 描き直す(){
 function 切り替え(x){ 種類 = x; 描き直す(); }
 function 月を動かす(n){ 年月 = 月をずらす(年月, n); 描き直す(); }
 
+// LINEにつながらなくても「今日の状況」は見られるようにする。
+// 金額のタブだけが本人確認を必要とする。
 liff.init({ liffId: LIFF_ID }).then(function(){
   if (!liff.isLoggedIn()) { liff.login(); return; }
   トークン = liff.getIDToken() || '';
-  if (!トークン) {
-    困った('本人の確認ができませんでした。LINEのメニューから開き直してください。');
-    return;
-  }
+}).catch(function(){
+  トークン = '';
+}).then(function(){
   描き直す();
-}).catch(function(e){
-  困った('LINEとつながりませんでした。LINEのメニューから開いてください。（'
-    + (e && e.message ? e.message : e) + '）');
 });
 </script>
 </body>
