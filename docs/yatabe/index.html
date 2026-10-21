@@ -244,11 +244,20 @@ function ハブを描く(d){
   出す(h);
 }
 
+function 本人確認へ(){
+  try { liff.login(); } catch (e) {
+    困った('LINEの確認画面を開けませんでした。LINEのメニューから開き直してください。');
+  }
+}
+
 function 描き直す(){
   if ((種類 === 'driver' || 種類 === 'hub') && !トークン) {
     見出しを描く('稼働と支払い', '');
-    出す(枠(false) + '<div class="err">本人の確認ができていないため、金額は表示できません。'
-      + 'LINEのメニューから開き直してください。</div>');
+    出す(枠(false)
+      + '<div class="card"><div class="sub" style="margin-bottom:10px">'
+      + '金額は本人にだけ表示します。LINEで本人の確認をしてください。</div>'
+      + '<div class="tab on" style="cursor:pointer" onclick="本人確認へ()">LINEで確認する</div>'
+      + '</div>');
     return;
   }
   出す('<div class="card"><div class="sub">読み込んでいます…</div></div>');
@@ -273,10 +282,10 @@ function 切り替え(x){ 種類 = x; 描き直す(); }
 function 月を動かす(n){ 年月 = 月をずらす(年月, n); 描き直す(); }
 
 // LINEにつながらなくても「今日の状況」は見られるようにする。
-// 金額のタブだけが本人確認を必要とする。
+// ここで強制的にログインへ飛ばすと普通のブラウザで開けなくなるので、
+// 金額のタブを押したときだけ本人確認する。
 liff.init({ liffId: LIFF_ID }).then(function(){
-  if (!liff.isLoggedIn()) { liff.login(); return; }
-  トークン = liff.getIDToken() || '';
+  if (liff.isLoggedIn()) トークン = liff.getIDToken() || '';
 }).catch(function(){
   トークン = '';
 }).then(function(){
