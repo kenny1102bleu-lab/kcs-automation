@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KCS配達 マイページ</title>
+<script>
+  // どのURLで来ても、本来のページへ送る。
+  // LIFFのエンドポイントURLがずれていても、ここで吸収する。
+  var 行き先 = '/kcs-automation/yatabe/' + location.search + location.hash;
+  if (location.pathname.indexOf('/kcs-automation/yatabe/') !== 0) {
+    location.replace(行き先);
+  }
+</script>
+<style>
+  body { margin:0; font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;
+         background:#f5f6f8; color:#333; display:flex; align-items:center;
+         justify-content:center; height:100vh; }
+  a { color:#06c755; }
+</style>
+</head>
+<body>
+  <p>ページへ移動しています… <a href="/kcs-automation/yatabe/">開かないときはこちら</a></p>
+</body>
+</html>
