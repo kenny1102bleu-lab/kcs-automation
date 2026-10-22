@@ -205,7 +205,14 @@ function ドライバーを描く(d){
 
 function ハブを描く(d){
   var h = 枠(true);
-  h += '<div class="total"><div class="t">今月の支払い合計</div><div class="v">' + 円(d.支払い合計) + '</div></div>';
+  if (d.オーナー報酬合計) {
+    h += '<div class="total"><div class="t">今月の店舗の金額</div><div class="v">'
+      + 円(d.オーナー報酬合計) + '</div></div>';
+    h += '<div class="card"><div class="t2">ドライバーへの支払い合計</div>'
+      + '<div class="v2">' + 円(d.支払い合計) + '</div></div>';
+  } else {
+    h += '<div class="total"><div class="t">今月の支払い合計</div><div class="v">' + 円(d.支払い合計) + '</div></div>';
+  }
 
   if (!d.ハブ.length) {
     h += '<div class="card"><div class="sub">担当しているHUBがありません。</div></div>';
@@ -216,9 +223,17 @@ function ハブを描く(d){
     h += '<div class="card"><div class="hub">' + 逃がす(x.HUB名) + '</div>'
       + '<div class="grid">'
       + '<div><div class="t2">全体数</div><div class="v2">' + x.全体数 + '</div></div>'
-      + '<div><div class="t2">人数</div><div class="v2">' + x.ドライバー.length + '</div></div>'
+      + '<div><div class="t2">配達完了</div><div class="v2">' + (x.配完合計 || 0) + '</div></div>'
       + '<div><div class="t2">支払い</div><div class="v2">' + 円(x.支払い合計) + '</div></div>'
       + '</div>';
+
+    // オーナーの取り分（要＝店舗の金額、谷田部＝12.5%の報酬）
+    if (x.オーナー報酬) {
+      h += '<div class="total" style="margin:10px 0 0">'
+        + '<div class="t">' + 逃がす(x.報酬ラベル || 'オーナーの取り分')
+        + '（' + (x.配完合計 || 0) + '個 × ' + x.報酬単価 + '円）</div>'
+        + '<div class="v">' + 円(x.オーナー報酬) + '</div></div>';
+    }
 
     if (x.ドライバー.length) {
       h += '<table><tr><th>ドライバー</th><th class="n">実配達</th><th class="n">単価</th><th class="n">金額</th></tr>';
