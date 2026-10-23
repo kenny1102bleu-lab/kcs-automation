@@ -14,9 +14,9 @@
        background:var(--背景);color:var(--文字)}
   h1{font-size:18px;margin:0 0 4px}
   .date{font-size:13px;color:var(--薄文字);margin-bottom:14px}
-  .tabs{display:flex;gap:8px;margin-bottom:14px}
-  .tab{flex:1;text-align:center;padding:10px;border-radius:10px;background:#fff;
-       font-size:14px;font-weight:600;color:var(--薄文字);cursor:pointer;
+  .tabs{display:flex;gap:6px;margin-bottom:14px}
+  .tab{flex:1;text-align:center;padding:10px 2px;border-radius:10px;background:#fff;
+       font-size:13px;white-space:nowrap;font-weight:600;color:var(--薄文字);cursor:pointer;
        box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .tab.on{background:var(--緑);color:#fff}
   .nav{display:flex;justify-content:space-between;align-items:center;
@@ -123,6 +123,7 @@ function 枠(月送りあり){
     + タブ('today', '今日の状況')
     + タブ('driver', 'ドライバー')
     + タブ('hub', 'ハブ')
+    + タブ('help', '使い方')
     + '</div>';
   if (月送りあり) {
     h += '<div class="nav">'
@@ -227,6 +228,13 @@ function ハブを描く(d){
       + '<div><div class="t2">支払い</div><div class="v2">' + 円(x.支払い合計) + '</div></div>'
       + '</div>';
 
+    // Amazonから入ってくる分（配達完了 × 単価）
+    if (x.売上合計) {
+      h += '<div class="card" style="margin:10px 0 0"><div class="t2">Amazonからの入金（今月）'
+        + '（' + (x.配完合計 || 0) + '個 × ' + x.売上単価 + '円）</div>'
+        + '<div class="v2">' + 円(x.売上合計) + '</div></div>';
+    }
+
     // オーナーの取り分（要＝店舗の金額、谷田部＝12.5%の報酬）
     if (x.オーナー報酬) {
       h += '<div class="total" style="margin:10px 0 0">'
@@ -237,7 +245,8 @@ function ハブを描く(d){
 
     // 週ごと（日曜〜土曜）。1週間ずつ更新されていく
     if (x.週別 && x.週別.length) {
-      h += '<div class="t2" style="margin:12px 0 4px">週ごと（日〜土）</div>'
+      h += '<div class="t2" style="margin:12px 0 4px">週ごと（日〜土）'
+        + '<span class="sub"> ／ 1個 ' + (x.売上単価 || 0) + '円</span></div>'
         + '<table><tr><th>期間</th><th class="n">個数</th><th class="n">金額</th></tr>';
       x.週別.forEach(function(w, i){
         h += '<tr><td>' + 逃がす(w.期間) + (i === 0 ? ' <span class="sub">今週</span>' : '') + '</td>'
@@ -277,7 +286,74 @@ function 本人確認へ(){
   }
 }
 
+// 使い方。本人確認も通信もいらないので、その場で描く
+var 使い方の中身 = [
+  ['出発するとき', [
+    ['メニューの「出発・帰庫」を押す', '出発か帰庫かを聞かれます'],
+    ['「出発」を押す', 'どこの拠点か、番号で聞かれます'],
+    ['拠点の番号を送る', 'その拠点で稼働開始になります'],
+    ['別の拠点にも行く', 'もう一度「出発」を押してください。1日に何回でも押せます'],
+    ['いま動いている拠点', '出発するたびに「いまうごいている拠点」が返ってきます']
+  ]],
+  ['帰るとき', [
+    ['「帰庫」を押す', '稼働中の拠点が1つならそのまま記録されます'],
+    ['2拠点以上まわっていた', 'どこの帰庫か聞かれるので、拠点を選んでください'],
+    ['帰庫したあと', '不在の報告をそのまま貼り付ければ、数字を読み取ります'],
+    ['まだ別の拠点が残っている', '「まだ ○○ が稼働中です」と出ます']
+  ]],
+  ['個数を間違えたとき', [
+    ['「修正」と送る', 'きのう・きょうの自分の報告が番号つきで出ます'],
+    ['番号を送る', 'いまの個数が表示されます'],
+    ['正しい個数を数字だけで送る', '上書きされます。元の数は記録に残ります']
+  ]],
+  ['そのほか', [
+    ['「休み連絡」', 'いつ休みかを聞かれます'],
+    ['「振り分け」', '要の荷物をだれが何個やるかを出します'],
+    ['画面（スクショ）を送る', '稼働中の拠点が自動で選ばれます']
+  ]]
+];
+
+var よくある質問 = [
+  ['全体の個数に前日の不在は入っていますか？',
+   '入っています。朝の全体数 ＝ その日の入庫数 ＋ 前日の不在。あとから足さないでください。'],
+  ['不在は配達完了に入りますか？',
+   '入りません。依頼と追加は配達完了に入ります。'],
+  ['Amazonからの入金はどう決まりますか？',
+   '配達完了の数 × 99円です。不在・回収は対象になりません。'],
+  ['週ごとの表はいつ変わりますか？',
+   '日曜はじまり・土曜おわりです。日曜になると1週ぶん繰り上がって、4週分が見られます。'],
+  ['金額が自分に見えないのはなぜ？',
+   '金額は本人にだけ表示します。「LINEで確認する」を押して本人確認してください。'],
+  ['数字がシートと合わないときは？',
+   'シートの数字が正です。入れ直せば画面にも反映されます。']
+];
+
+function 使い方を描く(){
+  var h = 枠(false);
+  使い方の中身.forEach(function(組){
+    h += '<div class="card"><div class="hub">' + 逃がす(組[0]) + '</div>'
+      + '<table>';
+    組[1].forEach(function(行){
+      h += '<tr><td><b>' + 逃がす(行[0]) + '</b></td><td>' + 逃がす(行[1]) + '</td></tr>';
+    });
+    h += '</table></div>';
+  });
+  h += '<div class="card"><div class="hub">よくある質問</div>';
+  よくある質問.forEach(function(q){
+    h += '<div style="margin:0 0 10px">'
+      + '<div style="font-weight:600">Q. ' + 逃がす(q[0]) + '</div>'
+      + '<div class="sub">A. ' + 逃がす(q[1]) + '</div></div>';
+  });
+  h += '</div>';
+  出す(h);
+}
+
 function 描き直す(){
+  if (種類 === 'help') {
+    見出しを描く('使い方', 'LINEでこう送ると、こうなります');
+    使い方を描く();
+    return;
+  }
   if ((種類 === 'driver' || 種類 === 'hub') && !トークン) {
     見出しを描く('HUB 稼働状況', '');
     出す(枠(false)
