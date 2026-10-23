@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>KCS 稼働と支払い</title>
+<title>HUB 稼働状況</title>
 <style>
   :root{
     --背景:#f5f6f8; --文字:#1a1a1a; --薄文字:#666; --線:#eceef1;
@@ -267,7 +267,7 @@ function 本人確認へ(){
 
 function 描き直す(){
   if ((種類 === 'driver' || 種類 === 'hub') && !トークン) {
-    見出しを描く('稼働と支払い', '');
+    見出しを描く('HUB 稼働状況', '');
     出す(枠(false)
       + '<div class="card"><div class="sub" style="margin-bottom:10px">'
       + '金額は本人にだけ表示します。LINEで本人の確認をしてください。</div>'
