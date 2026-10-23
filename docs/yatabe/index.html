@@ -235,6 +235,18 @@ function ハブを描く(d){
         + '<div class="v">' + 円(x.オーナー報酬) + '</div></div>';
     }
 
+    // 週ごと（日曜〜土曜）。1週間ずつ更新されていく
+    if (x.週別 && x.週別.length) {
+      h += '<div class="t2" style="margin:12px 0 4px">週ごと（日〜土）</div>'
+        + '<table><tr><th>期間</th><th class="n">個数</th><th class="n">金額</th></tr>';
+      x.週別.forEach(function(w, i){
+        h += '<tr><td>' + 逃がす(w.期間) + (i === 0 ? ' <span class="sub">今週</span>' : '') + '</td>'
+          + '<td class="n">' + w.実配達 + '</td>'
+          + '<td class="n yen">' + 円(w.金額) + '</td></tr>';
+      });
+      h += '</table>';
+    }
+
     if (x.ドライバー.length) {
       h += '<table><tr><th>ドライバー</th><th class="n">実配達</th><th class="n">単価</th><th class="n">金額</th></tr>';
       x.ドライバー.forEach(function(p){
