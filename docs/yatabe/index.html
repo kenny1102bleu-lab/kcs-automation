@@ -225,14 +225,27 @@ function ハブを描く(d){
       + '<div class="grid">'
       + '<div><div class="t2">全体数</div><div class="v2">' + x.全体数 + '</div></div>'
       + '<div><div class="t2">配達完了</div><div class="v2">' + (x.配完合計 || 0) + '</div></div>'
-      + '<div><div class="t2">支払い</div><div class="v2">' + 円(x.支払い合計) + '</div></div>'
+      + '<div><div class="t2">払う ／ ドライバー</div><div class="v2">' + 円(x.支払い合計) + '</div></div>'
       + '</div>';
 
-    // Amazonから入ってくる分（配達完了 × 単価）
-    if (x.売上合計) {
-      h += '<div class="card" style="margin:10px 0 0"><div class="t2">Amazonからの入金（今月）'
+    // ―― もらう分 ――
+    if (!x.管理外 && x.売上合計) {
+      h += '<div class="card" style="margin:10px 0 0"><div class="t2">もらう ／ Amazonからの入金（今月）'
         + '（' + (x.配完合計 || 0) + '個 × ' + x.売上単価 + '円）</div>'
         + '<div class="v2">' + 円(x.売上合計) + '</div></div>';
+    }
+    if (x.請求) {
+      h += '<div class="card" style="margin:10px 0 0"><div class="t2">もらう ／ '
+        + 逃がす(x.請求.宛名) + ' さんへの請求</div>'
+        + '<div class="v2">' + 円(x.請求.合計) + '</div>'
+        + '<table><tr><th>走った人</th><th class="n">実配達</th><th class="n">単価</th><th class="n">金額</th></tr>';
+      x.請求.明細.forEach(function(p){
+        h += '<tr><td>' + 逃がす(p.氏名) + '</td>'
+          + '<td class="n">' + p.実配達 + '</td>'
+          + '<td class="n">' + 円(p.単価) + '</td>'
+          + '<td class="n yen">' + 円(p.金額) + '</td></tr>';
+      });
+      h += '</table></div>';
     }
 
     // オーナーの取り分（要＝店舗の金額、谷田部＝12.5%の報酬）
@@ -245,7 +258,7 @@ function ハブを描く(d){
 
     // その拠点のオーナーへ払う分（KCSから支払う）
     if (x.オーナー先 && x.オーナー先.金額) {
-      h += '<div class="card" style="margin:10px 0 0"><div class="t2">'
+      h += '<div class="card" style="margin:10px 0 0"><div class="t2">払う ／ '
         + 逃がす(x.オーナー先.氏名) + ' さんへ'
         + (x.オーナー先.種別 === 'オーナー報酬' ? 'のインセンティブ' : 'の店舗分')
         + '（' + (x.配完合計 || 0) + '個 × ' + x.オーナー先.単価 + '円）</div>'
