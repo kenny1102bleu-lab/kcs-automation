@@ -214,6 +214,10 @@ function ハブを描く(d){
   } else {
     h += '<div class="total"><div class="t">今月の支払い合計</div><div class="v">' + 円(d.支払い合計) + '</div></div>';
   }
+  if (d.請求合計) {
+    h += '<div class="card"><div class="t2">今月の請求合計（よその店舗へ）</div>'
+      + '<div class="v2">' + 円(d.請求合計) + '</div></div>';
+  }
 
   if (!d.ハブ.length) {
     h += '<div class="card"><div class="sub">担当しているHUBがありません。</div></div>';
@@ -221,6 +225,28 @@ function ハブを描く(d){
   }
 
   d.ハブ.forEach(function(x){
+    // KCS管理外の拠点（上横場・みどりの・神立）は、請求する分だけを出す。
+    // 全体の数や全体の金額は出さない。
+    if (x.管理外) {
+      h += '<div class="card"><div class="hub">' + 逃がす(x.HUB名) + '</div>';
+      if (!x.請求) {
+        h += '<div class="sub">この月に請求する分はありません。</div></div>';
+        return;
+      }
+      h += '<div class="t2">' + 逃がす(x.請求.宛名) + ' さんへの請求'
+        + '（' + x.請求.個数合計 + '個 × ' + x.請求.単価 + '円）</div>'
+        + '<div class="v">' + 円(x.請求.合計) + '</div>'
+        + '<table><tr><th>日</th><th>走った人</th><th class="n">個数</th><th class="n">金額</th></tr>';
+      x.請求.日別.forEach(function(p){
+        h += '<tr><td>' + p.日付.slice(5).replace('-','/') + '</td>'
+          + '<td>' + 逃がす(p.氏名) + '</td>'
+          + '<td class="n">' + p.実配達 + '</td>'
+          + '<td class="n yen">' + 円(p.金額) + '</td></tr>';
+      });
+      h += '</table></div>';
+      return;
+    }
+
     h += '<div class="card"><div class="hub">' + 逃がす(x.HUB名) + '</div>'
       + '<div class="grid">'
       + '<div><div class="t2">全体数</div><div class="v2">' + x.全体数 + '</div></div>'
@@ -229,23 +255,10 @@ function ハブを描く(d){
       + '</div>';
 
     // ―― もらう分 ――
-    if (!x.管理外 && x.売上合計) {
+    if (x.売上合計) {
       h += '<div class="card" style="margin:10px 0 0"><div class="t2">もらう ／ Amazonからの入金（今月）'
         + '（' + (x.配完合計 || 0) + '個 × ' + x.売上単価 + '円）</div>'
         + '<div class="v2">' + 円(x.売上合計) + '</div></div>';
-    }
-    if (x.請求) {
-      h += '<div class="card" style="margin:10px 0 0"><div class="t2">もらう ／ '
-        + 逃がす(x.請求.宛名) + ' さんへの請求</div>'
-        + '<div class="v2">' + 円(x.請求.合計) + '</div>'
-        + '<table><tr><th>走った人</th><th class="n">実配達</th><th class="n">単価</th><th class="n">金額</th></tr>';
-      x.請求.明細.forEach(function(p){
-        h += '<tr><td>' + 逃がす(p.氏名) + '</td>'
-          + '<td class="n">' + p.実配達 + '</td>'
-          + '<td class="n">' + 円(p.単価) + '</td>'
-          + '<td class="n yen">' + 円(p.金額) + '</td></tr>';
-      });
-      h += '</table></div>';
     }
 
     // オーナーの取り分（要＝店舗の金額、谷田部＝12.5%の報酬）
