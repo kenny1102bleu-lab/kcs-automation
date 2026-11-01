@@ -22,6 +22,7 @@ import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from scripts.common.claude_client import call_claude
+from scripts.common.staff_models import model_for
 from scripts.common.discord_notify import notify
 from scripts.common.follower_tracker import get_latest
 from scripts.common import growth_report_store
@@ -119,7 +120,7 @@ def _speak(name: str, persona_prompt: str, data_block: str, transcript: list[str
     history = "\n".join(transcript) if transcript else "（まだ発言なし、あなたが最初の発言者です）"
     user_message = f"【今週の実データ】\n{data_block}\n\n【ここまでの議事録】\n{history}"
     try:
-        text = call_claude(persona_prompt, user_message).strip()
+        text = call_claude(persona_prompt, user_message, model=model_for(name)).strip()
     except Exception as e:
         text = f"（発言生成失敗: {type(e).__name__}）"
     return text
@@ -140,7 +141,11 @@ def run():
     transcript_text = "\n".join(transcript)
 
     try:
-        conclusion_raw = call_claude(JUN_PROMPT, f"【今週の実データ】\n{data_block}\n\n【議事録】\n{transcript_text}")
+        conclusion_raw = call_claude(
+            JUN_PROMPT,
+            f"【今週の実データ】\n{data_block}\n\n【議事録】\n{transcript_text}",
+            model=model_for("ジュン")
+        )
         text = conclusion_raw.strip()
         if "```" in text:
             text = text.split("```")[1]
