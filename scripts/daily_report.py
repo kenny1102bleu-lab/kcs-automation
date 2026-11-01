@@ -17,6 +17,7 @@ except Exception:
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from scripts.common.claude_client import call_claude
+from scripts.common.staff_models import model_for
 from scripts.common.discord_notify import notify
 from scripts.common.follower_tracker import get_latest
 from scripts.common import growth_report_store
@@ -81,7 +82,8 @@ def run():
     try:
         kei_output = _strip_bom(call_claude(
             KEI_PROMPT,
-            "本日の各部門売上・APIコストデータを分析し、ROIレポートと来週の予算配分を提言してください。"
+            "本日の各部門売上・APIコストデータを分析し、ROIレポートと来週の予算配分を提言してください。",
+            model=model_for("ケイ")
         ))
 
         follower_block = "\n".join(_format_follower_line(a) for a in ("HAL", "SUNAKUN"))
@@ -92,7 +94,8 @@ def run():
             f"ケイからの財務レポート:\n{kei_output}\n\n"
             f"フォロワー推移（前日までの記録、ソラのグロースレポート由来）:\n{follower_block}\n\n"
             f"ソラのグロースレポート（定性診断）:\n{growth_report_block}\n\n"
-            "明日の全社戦略を決定してください。"
+            "明日の全社戦略を決定してください。",
+            model=model_for("ジュン")
         ))
 
         message = (

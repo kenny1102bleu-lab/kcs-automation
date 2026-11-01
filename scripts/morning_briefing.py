@@ -8,6 +8,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from scripts.common.claude_client import call_claude
+from scripts.common.staff_models import model_for
 from scripts.common.discord_notify import notify
 from scripts.common import growth_report_store
 
@@ -62,13 +63,15 @@ def run():
     growth_block = _format_growth_block()
     jun_output = call_claude(
         JUN_PROMPT,
-        f"{growth_block}\n\n本日の朝礼です。上記データを踏まえて、今日の全社アクションプランを指示してください。"
+        f"{growth_block}\n\n本日の朝礼です。上記データを踏まえて、今日の全社アクションプランを指示してください。",
+        model=model_for("ジュン")
     )
 
     # ハルキがスケジュールに落とし込む
     haruki_output = call_claude(
         HARUKI_PROMPT,
-        f"ジュン専務からの指示:\n{jun_output}\n\n本日のタスクスケジュールリストを作成してください。"
+        f"ジュン専務からの指示:\n{jun_output}\n\n本日のタスクスケジュールリストを作成してください。",
+        model=model_for("ハルキ")
     )
 
     message = (
