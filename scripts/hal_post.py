@@ -8,12 +8,13 @@ import os
 import uuid
 import json
 import random
+import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import google.generativeai as genai
 from scripts.common.mamoru import review
 from scripts.common.discord_notify import notify, notify_post_preview
-from scripts.common.news_pool import fetch_theme, format_theme_prompt
+from scripts.common.news_pool import fetch_theme
 from scripts.common.post_parser import parse as parse_post, assemble_post, format_hashtags
 from scripts.common.nana import generate_media
 from scripts.common.ng_patterns import scan as ng_scan
@@ -120,6 +121,46 @@ def _build_context_block() -> str:
     )
 
 
+def _recent_post_texts(n: int = 6) -> list[str]:
+    """直近のHALの投稿本文。取得できなければ空（黙って落とさず、材料が減るだけにする）。"""
+    try:
+        from scripts.common.engagement_loop import fetch_recent_post_stats
+        stats = fetch_recent_post_stats(account="HAL", days=7, max_results=n)
+        return [s["text"].replace("\n", " ")[:80] for s in stats[:n] if s.get("text")]
+    except Exception:
+        return []
+
+
+def _build_material_message() -> str:
+    """2026-11-17: 配分のくじ引きをやめ、その日の材料を渡してHAL（ユキ）に選ばせる。
+    謙一の指示「その時のネタを拾って、その日に合わせて書けるように」。
+    配分表は命令ではなく『引き出し』。同じ系統が続くのを避ける見張りだけ残す。
+    材料が薄い日は、無理に拾わず等身大の日常で書いてよい。"""
+    wd = "月火水木金土日"[datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).weekday()]
+    parts = [f"今日は{wd}曜日。"]
+    theme = fetch_theme("hal")
+    if theme:
+        parts.append(
+            f"【今日の話題（ニュース）】{theme['angle']}（参考: {theme['title']}。直接引用せず、切り口だけ借りる）"
+        )
+    recent = _recent_post_texts()
+    if recent:
+        parts.append(
+            "【直近の自分の投稿（同じ系統・同じ言い回しは避ける）】\n" + "\n".join(f"- {t}" for t in recent)
+        )
+    drawers = " / ".join(f"{c[0]}（{c[2]}）" for c in HAL_THEME_CATEGORIES)
+    parts.append(
+        "【引き出し（使っても使わなくてもよい。割合の決まりはない）】" + drawers
+    )
+    parts.append(
+        "上の材料と、今日の季節・曜日・時間帯の中から、HALが今日いちばん一言いいたくなることを1つ選んで書く。"
+        "材料が薄い日は無理に話題を足さず、等身大の日常を一つ切り取る。"
+        "推しやサッカーの日程など、確かでない事実は断定しない。"
+        "HALの投稿テキストを作成してください。"
+    )
+    return "\n".join(parts)
+
+
 def run():
     genai.configure(api_key=clean_env("GEMINI_API_KEY"))
     system_prompt = YUKI_PROMPT + _build_context_block()
@@ -129,15 +170,7 @@ def run():
     if manual_theme:
         user_message = f"本日のテーマ: {manual_theme}\nHALの投稿テキストを作成してください。"
     else:
-        theme = fetch_theme("hal")
-        if theme:
-            user_message = format_theme_prompt(theme, "")
-        else:
-            cat_label, cat_hint = _pick_hal_theme_category()
-            user_message = (
-                f"本日のテーマ: {cat_label}\n方向性: {cat_hint}\n"
-                "HALの投稿テキストを作成してください。"
-            )
+        user_message = _build_material_message()
     user_message += "\n" + current_season_text()
     # フォロー訴求フック（確率式）。エンゲージメントは取れてもフォロワー転換が
     # 弱いという課題（2026-07-12、社長指摘・ソラのグロースレポート分析で判明）
