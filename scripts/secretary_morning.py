@@ -15,7 +15,7 @@
 事業カードの数字は、数字の取得元をつなぐまで未接続のまま。
 
 環境変数: GITHUB_TOKEN, GITHUB_REPOSITORY, DISCORD_WEBHOOK_URL(S), FIREBASE_SERVICE_ACCOUNT_JSON（任意）。
-DRY_RUN=1 なら送らず標準出力だけ。
+DRY_RUN=1 なら送らず、何も送らない（Actions 上では中身もログに出さない。手元の実行なら標準出力に出す）。
 """
 import os
 import re
@@ -164,7 +164,12 @@ def build(now: dt.datetime) -> tuple[str, int | None]:
 def run() -> None:
     now = dt.datetime.now(JST)
     msg, waiting_count = build(now)
-    print(msg)
+    # このリポジトリは公開。GitHub Actions の実行ログは誰でも読める。
+    # 報告の中身（承認待ちの題名＝取引先名・金額など）は、Actions のログに出さない（Discord にだけ送る）。
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"[報告] 組み立て完了（{len(msg)}文字・承認待ち {waiting_count if waiting_count is not None else '不明'}件）。中身はログに出しません")
+    else:
+        print(msg)
     if os.environ.get("DRY_RUN") == "1":
         print("[DRY_RUN] 送信しません")
         return
