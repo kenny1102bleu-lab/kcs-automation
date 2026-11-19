@@ -93,29 +93,57 @@ def summarize_approvals(rows: list[dict], now: dt.datetime) -> str:
     return "\n".join([head, *items])
 
 
-def waiting_approvals(now: dt.datetime) -> tuple[str, list[str]]:
-    """Firestore の承認待ち。(報告の行, 失敗の一覧) を返す。鍵が無ければ未接続と書く。"""
+def firestore_client():
+    """Firestore を開く。鍵（FIREBASE_SERVICE_ACCOUNT_JSON）が無ければ None。値は表示しない。"""
     raw = clean_env("FIREBASE_SERVICE_ACCOUNT_JSON")
     if not raw:
-        return "**1. 承認待ち** 未接続（FIREBASE_SERVICE_ACCOUNT_JSON を GitHub Secrets に置くと件数と待ち日数が出ます）", []
+        return None
+    import json
+
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app(credentials.Certificate(json.loads(raw)))
+    return firestore.client()
+
+
+def waiting_approvals(now: dt.datetime) -> tuple[str, list[str], int | None]:
+    """Firestore の承認待ち。(報告の行, 失敗の一覧, 件数) を返す。鍵が無ければ未接続と書く（件数は None）。"""
     try:
-        import json
-
-        import firebase_admin
-        from firebase_admin import credentials, firestore
-
-        if not firebase_admin._apps:
-            firebase_admin.initialize_app(credentials.Certificate(json.loads(raw)))
-        docs = firestore.client().collection("approvals").where("status", "==", "待ち").stream()
+        db = firestore_client()
+        if db is None:
+            return "**1. 承認待ち** 未接続（FIREBASE_SERVICE_ACCOUNT_JSON を GitHub Secrets に置くと件数と待ち日数が出ます）", [], None
+        docs = db.collection("approvals").where("status", "==", "待ち").stream()
         rows = [d.to_dict() for d in docs]
     except Exception as e:  # 鍵の値は出さない。種類と説明文（先頭200字）だけ報告に出す
-        return "**1. 承認待ち** 読めませんでした", [f"承認待ちの取得に失敗しました（{type(e).__name__}: {str(e)[:200]}）"]
-    return summarize_approvals(rows, now), []
+        return "**1. 承認待ち** 読めませんでした", [f"承認待ちの取得に失敗しました（{type(e).__name__}: {str(e)[:200]}）"], None
+    return summarize_approvals(rows, now), [], len(rows)
 
 
-def build(now: dt.datetime) -> str:
+def record_activity(now: dt.datetime, waiting_count: int | None) -> None:
+    """「朝の報告を送った」を、中枢アプリのオフィスの「社内の動き」（Firestore の activity）に残す。
+    記録できなくても報告は送り済みなので止めない。ただし失敗は黙らず、ログに出す。"""
+    try:
+        db = firestore_client()
+        if db is None:
+            return
+        tail = f"（承認待ち {waiting_count}件）" if waiting_count is not None else ""
+        db.collection("activity").document(f"act_morning_{now.strftime('%Y%m%d')}").set({
+            "at": now.astimezone(dt.timezone.utc).isoformat(),
+            "staffId": "sakura",
+            "kind": "done",
+            "text": f"朝の報告を送った{tail}",
+            "entityId": "corp",
+            "businessId": "company_ops",
+        })
+    except Exception as e:
+        print(f"[activity] 記録に失敗しました（{type(e).__name__}: {str(e)[:200]}）")
+
+
+def build(now: dt.datetime) -> tuple[str, int | None]:
     fails = failed_runs(now)
-    approvals_line, approval_fails = waiting_approvals(now)
+    approvals_line, approval_fails, waiting_count = waiting_approvals(now)
     fails = fails + approval_fails
     decided = recent_decisions(now)
     lines = [f"🗂️ **秘書室 朝の報告** {now.strftime('%m/%d')}"]
@@ -130,17 +158,19 @@ def build(now: dt.datetime) -> str:
         lines.append("- 変化なし")
     lines.append("**4. 失敗**")
     lines += [f"- {x}" for x in fails] if fails else ["- なし"]
-    return "\n".join(lines)
+    return "\n".join(lines), waiting_count
 
 
 def run() -> None:
-    msg = build(dt.datetime.now(JST))
+    now = dt.datetime.now(JST)
+    msg, waiting_count = build(now)
     print(msg)
     if os.environ.get("DRY_RUN") == "1":
         print("[DRY_RUN] 送信しません")
         return
     from scripts.common.discord_notify import notify
     notify(msg, channel="report")
+    record_activity(now, waiting_count)
 
 
 if __name__ == "__main__":
