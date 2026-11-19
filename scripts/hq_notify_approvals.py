@@ -10,9 +10,12 @@
 """
 import argparse
 import datetime as dt
+import os
 import sys
 
-from scripts import hq_discord as hd
+# `python scripts/xxx.py` で起動すると、リポジトリの直下が import の探す場所に入らない。先に足す（secretary_morning.py と同じ）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from scripts import hq_discord as hd  # noqa: E402
 
 
 def message_of(a: dict) -> str:
