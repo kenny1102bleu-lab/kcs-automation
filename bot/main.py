@@ -11,12 +11,13 @@ BOT_WEBHOOK_URL POST は常に「200 OKを返すだけで何も登録しない�
 """
 import os
 
-from bot.webhook_server import set_register_callback, set_notify_callback, start as start_webhook_server
+from bot.webhook_server import set_register_callback, set_notify_callback, set_channels_callback, start as start_webhook_server
 import bot.discord_bot as bot_module
 
 # コールバック登録 → Webhookサーバー起動（この順序を守らないと起動直後のPOSTを取りこぼす）
 set_register_callback(bot_module.register_pending)
 set_notify_callback(bot_module.notify_channel)
+set_channels_callback(bot_module.create_channels)
 start_webhook_server(port=int(os.environ.get("PORT", 10000)))
 
 bot_module.bot.run(bot_module.TOKEN)

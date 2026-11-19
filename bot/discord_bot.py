@@ -362,6 +362,45 @@ def notify_channel(channel_id: str, message: str,
     )
 
 
+def _channel_slug(name: str) -> str:
+    """Discord は、チャンネル名を小文字にし、空白を - にする。それに合わせて、既にあるかを見分ける。"""
+    return name.strip().lower().replace(" ", "-").replace("\u3000", "-")[:90]
+
+
+async def _create_channels(names: list, category_name: str) -> dict:
+    """カテゴリの中にテキストチャンネルを作る。すでにあるものは作らず、その ID を返す（何度呼んでも増えない）。
+    戻り値: {"channels": {依頼した名前: チャンネルID}} または {"error": 理由}。"""
+    guild = bot.guilds[0] if bot.guilds else None
+    if guild is None:
+        return {"error": "no_guild"}
+    try:
+        category = discord.utils.get(guild.categories, name=category_name) or await guild.create_category(category_name)
+        out = {}
+        for name in names:
+            slug = _channel_slug(name)
+            ch = discord.utils.get(category.text_channels, name=slug) or discord.utils.get(guild.text_channels, name=slug)
+            if ch is None:
+                ch = await guild.create_text_channel(slug, category=category)
+            out[name] = str(ch.id)
+        return {"channels": out}
+    except discord.Forbidden:
+        return {"error": "forbidden"}  # ボットに「チャンネルの管理」の権限が無い
+    except Exception as e:  # 中身は返さない。種類だけ
+        return {"error": type(e).__name__}
+
+
+def create_channels(names: list, category_name: str, timeout: int = 60) -> dict:
+    """webhook_server（別スレッド、同期）からBotのasyncioイベントループへ橋渡しして、結果を待つ。"""
+    loop = getattr(bot, "loop", None)
+    if loop is None or not loop.is_running():
+        return {"error": "bot_not_ready"}
+    fut = asyncio.run_coroutine_threadsafe(_create_channels(names, category_name), loop)
+    try:
+        return fut.result(timeout=timeout)
+    except Exception as e:
+        return {"error": type(e).__name__}
+
+
 def register_pending(approval_id: str, post_text: str, account: str,
                      media_filename: str = "", media_run_id: str = "",
                      media_type: str = "none", affiliate_link: str = ""):

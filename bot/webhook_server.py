@@ -13,6 +13,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 _register_callback = None  # discord_bot.py の register_pending を後から注入
 _notify_callback = None  # discord_bot.py の notify_channel を後から注入（アカウント別チャンネル直送用）
+_channels_callback = None  # discord_bot.py の create_channels を後から注入（チャンネルをまとめて作る）
+
+MAX_CHANNELS = 30  # 一度に作れる数の上限（暴走・誤送信の歯止め）
+MAX_NAME_LEN = 80
 
 
 def set_register_callback(fn):
@@ -23,6 +27,30 @@ def set_register_callback(fn):
 def set_notify_callback(fn):
     global _notify_callback
     _notify_callback = fn
+
+
+def set_channels_callback(fn):
+    global _channels_callback
+    _channels_callback = fn
+
+
+def validate_channel_request(body: dict):
+    """チャンネル作成の依頼を確かめる。(名前の一覧, カテゴリ名) を返す。おかしければ ValueError。"""
+    names = body.get("names")
+    category = str(body.get("category") or "").strip()
+    if not isinstance(names, list) or not names:
+        raise ValueError("names が空です")
+    if len(names) > MAX_CHANNELS:
+        raise ValueError(f"一度に作れるのは {MAX_CHANNELS} 件までです")
+    clean = []
+    for n in names:
+        n = str(n).strip()
+        if not n or len(n) > MAX_NAME_LEN:
+            raise ValueError("チャンネル名が空、または長すぎます")
+        clean.append(n)
+    if not category or len(category) > MAX_NAME_LEN:
+        raise ValueError("category が空、または長すぎます")
+    return clean, category
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -36,6 +64,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length))
+            if body.get("action") == "create_channels":
+                # 結果（チャンネルの ID）を返す必要があるので、他の action と違い、終わるまで待って答える
+                names, category = validate_channel_request(body)
+                result = _channels_callback(names, category) if _channels_callback else {"error": "channels callback not set"}
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+                return
             if body.get("action") == "notify":
                 # アカウント別チャンネルへの直接通知（discord_notify.notify_account経由）
                 if _notify_callback:

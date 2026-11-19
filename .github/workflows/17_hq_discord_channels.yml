@@ -1,0 +1,39 @@
+name: WF-17 マネージャーごとの Discord チャンネルを作る
+
+# 名簿（Firestore の ai_staff）のマネージャーごとに1チャンネル＋「総合」を、カテゴリ「KCS 事業」の中に作る。
+# すでにあるものは作らない（何度実行しても増えない）。対応表（knowledge/discord）を Firestore に書く。
+# 手動だけ。apply が false のままなら、何も作らない（確認だけ）。
+# 前提: 名簿が Firestore に入っていること（中枢アプリの「初期データを入れる」が先）。
+#       ボットに「チャンネルの管理」の権限があること。ボット（Render）が、この変更を反映した版で動いていること。
+# このリポジトリは公開。ログに出すのは件数だけ（名前・チャンネルIDは出さない）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'true でチャンネルを作る（false は確認だけ）'
+        default: 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  channels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests firebase-admin
+      - name: チャンネルを作る（または確認する）
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          BOT_WEBHOOK_URL: ${{ secrets.BOT_WEBHOOK_URL }}
+          APPLY: ${{ github.event.inputs.apply }}
+        run: |
+          if [ "$APPLY" = "true" ]; then
+            python scripts/hq_discord_channels.py --apply
+          else
+            python scripts/hq_discord_channels.py
+          fi
