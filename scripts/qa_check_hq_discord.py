@@ -183,4 +183,12 @@ status, _ = post({"action": "create_channels", "category": "", "names": ["x"]})
 check(status == 400, "おかしな依頼は 400 を返す")
 server.shutdown()
 
+# 8) コマンドとして起動できる（入口。GitHub Actions と同じ python scripts/xxx.py の形。import の探す場所の不具合を防ぐ）
+import subprocess  # noqa: E402
+
+root = os.path.join(os.path.dirname(__file__), "..")
+for script in ("scripts/hq_notify_approvals.py", "scripts/hq_discord_channels.py"):
+    r = subprocess.run([sys.executable, script, "--help"], cwd=root, capture_output=True, text=True, encoding="utf-8")
+    check(r.returncode == 0 and "usage" in r.stdout.lower(), f"{script} は、コマンドとして起動できる")
+
 print("すべて通過")
