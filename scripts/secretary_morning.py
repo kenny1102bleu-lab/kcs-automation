@@ -10,9 +10,12 @@
 読むもの:
 - kcs-automation 自身の GitHub Actions の失敗（GITHUB_TOKEN。鍵の追加は不要）
 - kcs-hq の decisions.md（ワークフロー側で hq/ にチェックアウトできたときだけ）
-承認待ち・事業カードの数字は Firestore 接続後に足す。今は「未接続」と正直に書く。
+承認待ち（kcs-hq の approvals コレクション）は FIREBASE_SERVICE_ACCOUNT_JSON があれば Firestore から読む。
+無いときは「未接続」と正直に書く。読めなかったときは失敗に入れる（黙って消さない）。
+事業カードの数字は、数字の取得元をつなぐまで未接続のまま。
 
-環境変数: GITHUB_TOKEN, GITHUB_REPOSITORY, DISCORD_WEBHOOK_URL(S)。DRY_RUN=1 なら送らず標準出力だけ。
+環境変数: GITHUB_TOKEN, GITHUB_REPOSITORY, DISCORD_WEBHOOK_URL(S), FIREBASE_SERVICE_ACCOUNT_JSON（任意）。
+DRY_RUN=1 なら送らず標準出力だけ。
 """
 import os
 import re
@@ -68,11 +71,55 @@ def recent_decisions(now: dt.datetime) -> list[str]:
     return heads
 
 
+def summarize_approvals(rows: list[dict], now: dt.datetime) -> str:
+    """承認待ちの行から、件数・いちばん古い待ち日数・先頭の数件を1つの文にする（純粋関数）。"""
+    if not rows:
+        return "**1. 承認待ち** なし"
+    today = now.date()
+
+    def waited(r: dict) -> int:
+        created = str(r.get("createdAt") or "")[:10]
+        try:
+            return max(0, (today - dt.date.fromisoformat(created)).days)
+        except ValueError:
+            return 0
+
+    oldest = max(waited(r) for r in rows)
+    ordered = sorted(rows, key=waited, reverse=True)[:5]
+    head = f"**1. 承認待ち** {len(rows)}件（いちばん古いもので {oldest}日待ち）"
+    items = [f"- {r.get('department', '')}：{r.get('title', '')}" for r in ordered]
+    if len(rows) > len(ordered):
+        items.append(f"- ほか {len(rows) - len(ordered)} 件は中枢アプリの「秘書室」")
+    return "\n".join([head, *items])
+
+
+def waiting_approvals(now: dt.datetime) -> tuple[str, list[str]]:
+    """Firestore の承認待ち。(報告の行, 失敗の一覧) を返す。鍵が無ければ未接続と書く。"""
+    raw = clean_env("FIREBASE_SERVICE_ACCOUNT_JSON")
+    if not raw:
+        return "**1. 承認待ち** 未接続（FIREBASE_SERVICE_ACCOUNT_JSON を GitHub Secrets に置くと件数と待ち日数が出ます）", []
+    try:
+        import json
+
+        import firebase_admin
+        from firebase_admin import credentials, firestore
+
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(credentials.Certificate(json.loads(raw)))
+        docs = firestore.client().collection("approvals").where("status", "==", "待ち").stream()
+        rows = [d.to_dict() for d in docs]
+    except Exception as e:  # 鍵の値は出さない。種類と説明文（先頭200字）だけ報告に出す
+        return "**1. 承認待ち** 読めませんでした", [f"承認待ちの取得に失敗しました（{type(e).__name__}: {str(e)[:200]}）"]
+    return summarize_approvals(rows, now), []
+
+
 def build(now: dt.datetime) -> str:
     fails = failed_runs(now)
+    approvals_line, approval_fails = waiting_approvals(now)
+    fails = fails + approval_fails
     decided = recent_decisions(now)
     lines = [f"🗂️ **秘書室 朝の報告** {now.strftime('%m/%d')}"]
-    lines.append("**1. 承認待ち** 未接続（Firestore をつなぐと件数と待ち日数が出ます）")
+    lines.append(approvals_line)
     lines.append("**2. 事業カード** 案件 / 占い / 既存のお客さん … 未接続（数字の取得元をつなぐまで空）")
     lines.append("**3. 昨日からの変化**")
     if decided:
