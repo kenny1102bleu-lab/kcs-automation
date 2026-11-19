@@ -108,8 +108,8 @@ def waiting_approvals(now: dt.datetime) -> tuple[str, list[str]]:
             firebase_admin.initialize_app(credentials.Certificate(json.loads(raw)))
         docs = firestore.client().collection("approvals").where("status", "==", "待ち").stream()
         rows = [d.to_dict() for d in docs]
-    except Exception as e:  # 鍵の値は出さない。種類だけ報告に出す
-        return "**1. 承認待ち** 読めませんでした", [f"承認待ちの取得に失敗しました（{type(e).__name__}）"]
+    except Exception as e:  # 鍵の値は出さない。種類と説明文（先頭200字）だけ報告に出す
+        return "**1. 承認待ち** 読めませんでした", [f"承認待ちの取得に失敗しました（{type(e).__name__}: {str(e)[:200]}）"]
     return summarize_approvals(rows, now), []
 
 
