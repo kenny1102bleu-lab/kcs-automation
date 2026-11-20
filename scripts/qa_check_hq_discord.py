@@ -39,8 +39,8 @@ class Doc:
     def get(self):
         return Doc(self.store, self.path, self.store.get(self.path))
 
-    def set(self, data):
-        self.store[self.path] = dict(data)
+    def set(self, data, merge=False):
+        self.store[self.path] = {**(self.store.get(self.path) or {}), **data} if merge else dict(data)
 
     def update(self, data):
         self.store[self.path] = {**self.store[self.path], **data}
@@ -190,5 +190,42 @@ root = os.path.join(os.path.dirname(__file__), "..")
 for script in ("scripts/hq_notify_approvals.py", "scripts/hq_discord_channels.py"):
     r = subprocess.run([sys.executable, script, "--help"], cwd=root, capture_output=True, text=True, encoding="utf-8")
     check(r.returncode == 0 and "usage" in r.stdout.lower(), f"{script} は、コマンドとして起動できる")
+
+# 9) すでにあるチャンネルを使う（existing が channels より優先）。法人／個人の印
+eff = hd.effective_channels({"channels": {"general": "G", "mgr_hal": "H"}, "existing": {"mgr_hal": "EXIST", "general": ""}})
+check(eff == {"general": "G", "mgr_hal": "EXIST"}, "すでにあるチャンネルの指定が優先。空の指定は無視")
+store = {
+    **BIZ,
+    "knowledge/discord": {"channels": channels, "existing": {"mgr_hal": "777"}},
+    "approvals/p1": {"status": "待ち", "businessId": "hal", "department": "クライアント運用部", "title": "t1", "entityId": "personal"},
+    "approvals/p2": {"status": "待ち", "businessId": "homepage", "department": "営業部", "title": "t2", "entityId": "corp"},
+    "approvals/p3": {"status": "待ち", "businessId": "homepage", "department": "営業部", "title": "t3"},
+}
+sent = []
+capture(lambda: hn.run(FakeDb(store), send=lambda ch, msg: sent.append((ch, msg)) or True))
+by = {m.split(chr(10))[1]: (ch, m) for ch, m in sent}
+check(by["t1"][0] == "777", "existing に指定したチャンネル（すでにあるもの）へ送る")
+check("【個人】" in by["t1"][1] and "【法人】" in by["t2"][1], "通知に【法人】【個人】の印が付く")
+check("【" not in by["t3"][1], "名義が無い承認待ちには、印を付けない")
+
+for ok in ({"mgr_hal": "1494812858830032988"}, {"general": "1494714501801447586"}):
+    check(hd.valid_link(ok) == ok, f"指定を受け付ける: {list(ok)[0]}")
+for bad in ({}, {"hal": "1494812858830032988"}, {"mgr_hal": "abc"}, {"mgr_hal": "123"}, {"mgr_": "1494812858830032988"}, []):
+    try:
+        hd.valid_link(bad)
+        check(False, f"おかしな指定を断る: {bad}")
+    except ValueError:
+        pass
+check(True, "キーが違う・IDが数字でない・短い・空の指定は断る")
+
+store = {"knowledge/discord": {"channels": {"general": "G"}, "category": "KCS 事業"}}
+db9 = FakeDb(store)
+rc, log = capture(lambda: hc.link(db9, '{"mgr_hal": "1494812858830032988"}'))
+check(rc == 0 and store["knowledge/discord"]["existing"] == {"mgr_hal": "1494812858830032988"}, "指定を existing に書く")
+check(store["knowledge/discord"]["channels"] == {"general": "G"} and "1494812858830032988" not in log, "作ったチャンネルの対応は消さない。ログにIDは出ない")
+rc, _ = capture(lambda: hc.link(db9, "ではない"))
+check(rc == 1, "JSONでない指定は、何もしない")
+db9.store["knowledge/discord"]["existing"] = {"mgr_hal": "1494812858830032988"}
+capture(lambda: hc.run(db9, apply=True, post=lambda p: {"channels": {"総合": "11"}}) if False else None)
 
 print("すべて通過")

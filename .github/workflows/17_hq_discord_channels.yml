@@ -13,6 +13,9 @@ on:
       apply:
         description: 'true でチャンネルを作る（false は確認だけ）'
         default: 'false'
+      link:
+        description: 'すでにあるチャンネルを通知先に使う指定（JSON: {"mgr_hal": "チャンネルID"}）。入れると、作らずこの指定だけ書く'
+        default: ''
 
 permissions:
   contents: read
@@ -31,8 +34,11 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           BOT_WEBHOOK_URL: ${{ secrets.BOT_WEBHOOK_URL }}
           APPLY: ${{ github.event.inputs.apply }}
+          LINK: ${{ github.event.inputs.link }}
         run: |
-          if [ "$APPLY" = "true" ]; then
+          if [ -n "$LINK" ]; then
+            python scripts/hq_discord_channels.py --link "$LINK"
+          elif [ "$APPLY" = "true" ]; then
             python scripts/hq_discord_channels.py --apply
           else
             python scripts/hq_discord_channels.py

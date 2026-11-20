@@ -7,9 +7,12 @@
 
     python scripts/hq_discord_channels.py            # 確認だけ
     python scripts/hq_discord_channels.py --apply    # 作る
+    python scripts/hq_discord_channels.py --link '{"mgr_hal": "<チャンネルID>"}'
+        # すでにあるチャンネルを、そのマネージャー（general は全体）の通知先にする。作らない・消さない
 """
 import argparse
 import datetime as dt
+import json
 import os
 import sys
 
@@ -55,19 +58,39 @@ def run(db, apply: bool, post=None) -> int:
         "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
         "entityId": "corp",
         "businessId": "company_ops",
-    })
+    }, merge=True)  # すでにあるチャンネルを使う指定（existing）を消さない
     print(f"[チャンネル] {len(mapping)}チャンネルを用意し、対応表を Firestore に書きました")
+    return 0
+
+
+def link(db, raw: str) -> int:
+    """すでにあるチャンネルを使う指定を、対応表（knowledge/discord の existing）に足す。新しく作ったもの（channels）は消さない。"""
+    try:
+        mapping = hd.valid_link(json.loads(raw))
+    except (ValueError, TypeError) as e:
+        print(f"[チャンネル] 指定がおかしいので、何もしません（{e}）")
+        return 1
+    db.collection(hd.DOC[0]).document(hd.DOC[1]).set({
+        "existing": mapping,
+        "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "entityId": "corp",
+        "businessId": "company_ops",
+    }, merge=True)
+    print(f"[チャンネル] すでにあるチャンネル {len(mapping)}件を、通知先に使う指定を書きました")
     return 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--link", default="", help="すでにあるチャンネルを使う指定（JSON）")
     args = ap.parse_args()
     db = hd.firestore_client()
     if db is None:
         print("[チャンネル] FIREBASE_SERVICE_ACCOUNT_JSON がありません")
         return 1
+    if args.link:
+        return link(db, args.link)
     return run(db, args.apply)
 
 
