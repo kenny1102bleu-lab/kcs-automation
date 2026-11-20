@@ -1,0 +1,43 @@
+name: WF-19 トピックデスク（ニュース・季節の話題を集める）
+
+# Yahoo!ニュース トピックス・Google トレンド・季節の暦から、話題を集めて Firestore の topics に書く。1時間ごと。
+# 予算0円（AIを使わない）。設計: kcs-hq/departments/clients/planning_meeting_design.md（企画会議）。
+# このリポジトリは公開。ログに出すのは件数だけ（見出しは出さない）。
+# 鍵は新しく増やさない: FIREBASE_SERVICE_ACCOUNT_JSON（既存）。
+
+on:
+  schedule:
+    - cron: '11 * * * *'  # 毎時 11分（正時のアクセス集中を避ける）
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true なら取るだけで、書かない'
+        default: 'false'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hq-scout
+  cancel-in-progress: false
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests firebase-admin
+      - name: 話題を集める
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python scripts/hq_scout.py --dry-run
+          else
+            python scripts/hq_scout.py
+          fi
