@@ -209,6 +209,33 @@ db6 = FakeDb({"knowledge": {"plan_uranai": PLAN_A}, "topics": data["topics"]})
 res6, _ = quiet(lambda: hp.run_account(db6, "uranai", now=NOW, call=fake_call(text="ごめんなさい、できません")))
 check(res6["ok"] and res6["ideas"] == 0 and db6.data["usage"]["plan-2026-11"]["costUsd"] > 0, "JSONでない返事は、案0件。費用は記録する")
 
+# 9) キャラクターシート: 話題との相性・プロンプト・避ける語・好きな形式
+CHAR = {
+    **PLAN_A,
+    "voice": {"first": "ぼく", "endings": ["〜だワン"], "catchphrases": ["ぼくも見てほしい"], "emoji": "🐾", "length": "40〜100字"},
+    "audience": "犬が好きな人", "interests": ["散歩", "おやつ"], "avoid": ["事故"], "times": ["7:00"], "cta": "動画へ誘う", "cameo": "なし",
+    "samples": {"good": ["雪ってつめたいんだワン"], "bad": ["病気が治るワン"]},
+    "affinity": {"categories": {"季節": 3, "急上昇": 1}, "keywords": ["犬", "雪", "散歩"], "dislike": ["事故", "虐待"]},
+    "formatsWeight": {"豆知識": 1, "予想・占い": 3},
+    "avoidWords": ["虐待"],
+}
+tp = [
+    topic("t_dog", "犬の散歩に雪が降る", category="急上昇", heat=10),
+    topic("t_snow", "11月22日 小雪（二十四節気）", category="季節", heat=5, person="none"),
+    topic("t_plain", "株価が小幅に下落", category="急上昇", heat=30),
+    topic("t_bad", "犬の事故が相次ぐ", category="急上昇", heat=40),
+]
+el = pl.eligible_topics(tp, CHAR["topicPolicy"], NOW_ISO, CHAR)
+check([t["id"] for t in el] == ["t_dog", "t_snow", "t_plain"], "キャラの好きな語が多い話題が先。避ける語に当たる話題は、外す")
+check({t["id"]: t["fit"] for t in el} == {"t_dog": "高", "t_snow": "高", "t_plain": "低"}, "話題に、相性（高・中・低）をつける")
+check(pl.affinity(tp[3], CHAR) < pl.affinity(tp[0], CHAR) and pl.affinity(tp[0], None) == 0, "避ける語は減点。キャラ（plan）が無ければ0")
+system, user = pl.build_prompt(CHAR, el, [])
+check("一人称: ぼく" in user and "犬が好きな人" in user and "雪ってつめたいんだワン" in user and "病気が治るワン" in user, "口調・読者像・いい例・悪い例を渡す")
+check("合い度: 高" in user and "キャラクター" in system, "話題の合い度を渡し、キャラに合う切り口を求める")
+check(pl.guard(idea("虐待の話", "豆知識"), CHAR).startswith("乗らない話題") or pl.guard(idea("虐待の話", "豆知識"), CHAR) != "", "避ける語を含む案は外す")
+check(pl.guard(idea("犬の虐待を考える", "豆知識"), {**CHAR, "avoidWords": ["虐待"]}) != "", "キャラが避ける語（avoidWords）の案は外す")
+check(pl.total_score(idea("a", "予想・占い"), [], CHAR) > pl.total_score(idea("a", "豆知識"), [], CHAR), "そのキャラの好きな形式に、少し加点する")
+
 # コマンドとして起動できる
 import subprocess  # noqa: E402
 
