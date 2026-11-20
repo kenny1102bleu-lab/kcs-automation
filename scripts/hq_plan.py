@@ -57,7 +57,7 @@ def run_account(db, account: str, dry_run: bool = False, now=None, call=None, ge
     budget = plan_budget()
     level = ai_budget.level(spent, budget)
 
-    topics = planner.eligible_topics(load_topics(db, now, get), plan.get("topicPolicy") or {}, now.isoformat())
+    topics = planner.eligible_topics(load_topics(db, now, get), plan.get("topicPolicy") or {}, now.isoformat(), plan)
     cutoff = (now - dt.timedelta(days=planner.RECENT_DAYS)).isoformat()
     recent = [
         d.to_dict() or {} for d in db.collection("ideas").where("accountId", "==", account).stream()

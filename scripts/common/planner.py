@@ -19,8 +19,26 @@ MIN_SAFETY = 3
 TOPIC_LIMIT = 12
 
 
-def eligible_topics(topics: list[dict], policy: dict, now_iso: str) -> list[dict]:
-    """そのアカウントが乗ってよい話題。期限切れ・乗らない印・（人物の印）・カテゴリの制限を外し、熱量の高い順。"""
+def affinity(topic: dict, plan: dict | None) -> int:
+    """話題と、そのアカウントの特性（キャラクターシートの affinity）との相性。カテゴリの点×2＋相性のよい語×2−避ける語×4。
+    plan が無ければ 0。**キャラに合わない話題を、AIに渡す前に減らすため**に使う。"""
+    if not plan or not plan.get("affinity"):
+        return 0
+    aff = plan["affinity"]
+    text = str(topic.get("title", "")) + " " + " ".join(topic.get("context") or [])
+    score = int((aff.get("categories") or {}).get(topic.get("category"), 1)) * 2
+    score += 2 * sum(1 for k in aff.get("keywords", []) if k and k in text)
+    score -= 4 * sum(1 for k in aff.get("dislike", []) if k and k in text)
+    return score
+
+
+def fit_label(score: int) -> str:
+    return "高" if score >= 6 else "中" if score >= 3 else "低"
+
+
+def eligible_topics(topics: list[dict], policy: dict, now_iso: str, plan: dict | None = None) -> list[dict]:
+    """そのアカウントが乗ってよい話題。期限切れ・乗らない印・（人物の印）・カテゴリの制限・相性が悪いものを外し、
+    相性（特性）と熱量の高い順。plan があれば、各話題に fit（相性の高・中・低）をつける。"""
     out = []
     for t in topics:
         if t.get("expiresAt") and t["expiresAt"] <= now_iso:
@@ -35,8 +53,14 @@ def eligible_topics(topics: list[dict], policy: dict, now_iso: str) -> list[dict
         allow = policy.get("allowCategories")
         if allow and t.get("category") not in allow:
             continue
+        if plan:
+            text = str(t.get("title", "")) + " " + " ".join(t.get("context") or [])
+            if any(k and k in text for k in (plan.get("affinity") or {}).get("dislike", [])):
+                continue  # 避ける語に当たる（キャラに合わない）
+            a = affinity(t, plan)
+            t = {**t, "affinity": a, "fit": fit_label(a)}
         out.append(t)
-    return sorted(out, key=lambda t: (-int(t.get("heat") or 0), str(t.get("title"))))[:TOPIC_LIMIT]
+    return sorted(out, key=lambda t: (-(int(t.get("affinity") or 0) * 3 + int(t.get("heat") or 0) // 2), str(t.get("title"))))[:TOPIC_LIMIT]
 
 
 SYSTEM = (
@@ -46,6 +70,7 @@ SYSTEM = (
     "- 案は {n} 個。形式を6種類以上に散らし、意外な組み合わせを必ず入れる。\n"
     "- 各案に「なぜ伸びると思うか（仮説）」を1行つける。\n"
     "- 1つのネタから、Xの投稿・ショート動画の台本・素材（在庫）に展開できる案を歓迎する。\n"
+    "- **キャラクター（口調・好み・読者像）に合う切り口**にする。そのキャラが言いそうにない案は出さない。話題の「合い度」が低いものは、無理に使わない。\n"
     "- 与えられた話題と、アカウントの決まり（rules）を必ず守る。決まりに触れる案は出さない。話題に無い事実・数字・人名を作らない。\n"
     "- 直近に出した案（recent）と似た案は出さない。\n"
     '出力はJSONだけ（前後に文章を付けない）: {{"ideas": [{{"title": "案の題（20字以内）", "topicId": "話題のID（使わなければ空）", '
@@ -56,19 +81,45 @@ SYSTEM = (
 )
 
 
+def _sheet(plan: dict) -> list[str]:
+    """キャラクターシートを、AIに渡す文にする（あるものだけ）。"""
+    v = plan.get("voice") or {}
+    out = []
+    if v:
+        out.append("【口調】一人称: " + str(v.get("first", "")) + " ／ 語尾: " + "・".join(v.get("endings", []))
+                   + " ／ 口癖: " + "・".join(v.get("catchphrases", [])) + " ／ 絵文字: " + str(v.get("emoji", "")) + " ／ 長さ: " + str(v.get("length", "")))
+    for key, label in (("audience", "読んでほしい人"), ("language", "言語")):
+        if plan.get(key):
+            out.append(f"【{label}】{plan[key]}")
+    for key, label in (("interests", "好き・得意なこと"), ("avoid", "触れないこと"), ("times", "投稿しやすい時間帯")):
+        if plan.get(key):
+            out.append(f"【{label}】" + "、".join(plan[key]))
+    for key, label in (("cta", "ゴールへの入れ方"), ("cameo", "ほかとの距離")):
+        if plan.get(key):
+            out.append(f"【{label}】{plan[key]}")
+    smp = plan.get("samples") or {}
+    if smp.get("good"):
+        out.append("【口調のいい例（事実の主張ではない）】\n" + "\n".join(f"- {x}" for x in smp["good"]))
+    if smp.get("bad"):
+        out.append("【悪い例（こう書かない）】\n" + "\n".join(f"- {x}" for x in smp["bad"]))
+    return out
+
+
 def build_prompt(plan: dict, topics: list[dict], recent: list[dict], n: int = N_IDEAS) -> tuple[str, str]:
-    """(system, user)。話題は、題・カテゴリ・理由（関連ニュースの見出し）だけを渡す（URL・本文は渡さない）。"""
+    """(system, user)。話題は、題・カテゴリ・合い度・理由（関連ニュースの見出し）だけを渡す（URL・本文は渡さない）。"""
     system = SYSTEM.format(n=n)
     lines = []
     for t in topics:
         ctx = " / ".join(t.get("context") or [])
-        lines.append(f"- [{t['id']}] {t.get('title', '')}（{t.get('category', '')}）" + (f" 理由: {ctx}" if ctx else ""))
+        fit = f" 合い度: {t['fit']}" if t.get("fit") else ""
+        lines.append(f"- [{t['id']}] {t.get('title', '')}（{t.get('category', '')}）{fit}" + (f" 理由: {ctx}" if ctx else ""))
     recent_lines = [f"- {r.get('title', '')}（{r.get('format', '')}）" for r in recent[:30]]
     user = "\n".join([
         f"【アカウント】{plan.get('name', '')}",
         f"【ゴール】{plan.get('goal', '')}",
         f"【集客の流れ】{plan.get('funnel', '')}",
         f"【世界観と口調】\n{plan.get('persona', '')}",
+        *_sheet(plan),
         "【決まり（rules）】\n" + "\n".join(f"- {r}" for r in plan.get("rules", [])),
         "【形式（formats）】" + "、".join(plan.get("formats", [])),
         "【使える話題】\n" + ("\n".join(lines) if lines else "（いま使える話題はありません。季節・暮らし・気分の自由な企画にしてください）"),
@@ -123,13 +174,17 @@ def guard(idea: dict, plan: dict) -> str:
         return "人物の話題（このアカウントは乗らない）"
     if plan.get("entityId") == "personal" and plan.get("businessId") == "adult" and any(w in text for w in ALWAYS_BLOCK_WORDS):
         return "決まりに触れる語"
+    for w in plan.get("avoidWords", []):
+        if w and w in text:
+            return f"キャラが避ける語（{w}）"
     if idea["scores"]["safety"] < MIN_SAFETY:
         return "安全の点が低い"
     return ""
 
 
-def total_score(idea: dict, recent_formats: list[str]) -> float:
+def total_score(idea: dict, recent_formats: list[str], plan: dict | None = None) -> float:
     base = sum(idea["scores"][k] * w for k, w in WEIGHTS.items())
+    base += 0.05 * int(((plan or {}).get("formatsWeight") or {}).get(idea["format"], 0))  # そのキャラの好きな形式
     repeats = sum(1 for f in recent_formats if f == idea["format"])
     return round(base - min(repeats * REPEAT_PENALTY, 1.0), 3)
 
@@ -140,7 +195,7 @@ def select(ideas: list[dict], plan: dict, recent_formats: list[str], k: int = N_
     out = []
     for idea in ideas:
         why = guard(idea, plan)
-        out.append({**idea, "total": total_score(idea, recent_formats), "status": "却下" if why else "候補", "rejectedFor": why})
+        out.append({**idea, "total": total_score(idea, recent_formats, plan), "status": "却下" if why else "候補", "rejectedFor": why})
     pool = sorted((i for i in out if i["status"] == "候補"), key=lambda i: -i["total"])
     used_formats = set()
     picked = 0
