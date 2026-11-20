@@ -1,0 +1,49 @@
+name: WF-20 企画会議（アカウントごとに、掛け合わせの案を出す）
+
+# 話題 × 世界観 × 形式 × 目的の掛け合わせで、アカウントごとに案を出し、選んで、Firestore の ideas に記録する。
+# 投稿はしない（案を出して記録するだけ）。設計: kcs-hq/departments/clients/planning_meeting_design.md（2026-11-20）。
+# AI は Claude（既定 Opus 5.5・発想は高いモデル）。費用は謙一の個人から出す。月の枠（既定30ドル）の80%で警告・100%で止まる（usage/plan-YYYY-MM）。
+# アカウントの世界観・決まりは、Firestore の knowledge/plan_<id>（非公開）から読む。このリポジトリは公開なので、ログに出すのは件数と費用だけ。
+#
+# いまは手動実行だけ（最初の試験。1回ずつ、結果を見て決める）。
+# 鍵は新しく増やさない: FIREBASE_SERVICE_ACCOUNT_JSON / ANTHROPIC_API_KEY（どちらも既存）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      account:
+        description: 'アカウントのID（カンマ区切り。例: uranai,emma）'
+        default: 'uranai'
+      dry_run:
+        description: 'true なら、AIを呼ばず、使える話題の件数だけ確かめる'
+        default: 'true'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hq-plan
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests firebase-admin anthropic
+      - name: 案を出す
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ACCOUNT: ${{ github.event.inputs.account }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python scripts/hq_plan.py --account "$ACCOUNT" --dry-run
+          else
+            python scripts/hq_plan.py --account "$ACCOUNT"
+          fi
