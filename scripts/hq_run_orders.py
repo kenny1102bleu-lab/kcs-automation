@@ -146,22 +146,26 @@ def run(db, dry_run: bool = False, max_orders: int = 3, now=None, call=None, cla
             model = pick_model(executor, order)
             staff_snap = db.collection("ai_staff").document(str(order.get("assigneeId") or "jun")).get()
             staff = (staff_snap.to_dict() or {}) if staff_snap.exists else {}
-            businesses = [b.to_dict() or {} for b in db.collection("businesses").stream()]
+            businesses = [{**(b.to_dict() or {}), "id": b.id} for b in db.collection("businesses").stream()]
             waiting = sum(1 for _ in db.collection("approvals").where("status", "==", "待ち").stream())
             system, user = order_exec.build_prompt(order, staff, order_exec.safe_context(businesses, waiting))
             res = call(executor, model, system, user)
             parsed = order_exec.parse_result(res["text"])
             cost = ai_budget.cost_usd(model, res["input_tokens"], res["output_tokens"])
+            fallback = {"entityId": order.get("entityId"), "businessId": order.get("businessId")}
+            main_cls = order_exec.classify(parsed.get("businessId", ""), businesses, fallback)
             ref.update({
                 "run": "review", "result": parsed["result"], "executor": executor, "model": model,
                 "costUsd": round(cost, 4), "proposals": len(parsed["actions"]), "error": "",
+                "resultBusinessId": main_cls["businessId"] if main_cls["classified"] else "",
             })
             for i, a in enumerate(parsed["actions"]):
+                cls = order_exec.classify(a.get("businessId", ""), businesses, fallback)
                 db.collection("approvals").document(f"appr_order_{d.id}_{i}").set({
                     "kind": "order_proposal", "refId": d.id, "title": a["title"],
                     "body": f"{a['detail']}\n\n※AIの提案です。承認すると「この提案を進めてよい」の意味になります（AIは送信・投稿・支払いをしません）。".strip(),
                     "department": staff.get("dept") or "秘書室",
-                    "entityId": order.get("entityId") or "corp", "businessId": order.get("businessId") or "company_ops",
+                    "entityId": cls["entityId"], "businessId": cls["businessId"], "unclassified": not cls["classified"],
                     "status": "待ち", "createdAt": now.isoformat(),
                 })
             db.collection("activity").document(f"act_orderrun_{d.id}").set({

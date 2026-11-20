@@ -84,7 +84,11 @@ def base_data():
     return {
         "ai_staff": {"jun": {"name": "ジュン専務", "role": "全社の判断役", "kind": "staff"},
                      "ryo": {"name": "リョウ", "role": "制作・マーケ", "dept": "マーケティング部"}},
-        "businesses": {"b1": {"name": "テスト事業", "status": "稼働", "owner": "営業部", "next": "次の一手", "note": "秘密のメモ"}},
+        "businesses": {
+            "b1": {"name": "テスト事業", "status": "稼働", "owner": "営業部", "next": "次の一手", "note": "秘密のメモ", "entityId": "corp"},
+            "car_lease": {"name": "車のレンタル", "status": "稼働", "owner": "経理部", "entityId": "personal"},
+            "homepage": {"name": "ホームページ制作", "status": "準備", "owner": "制作部", "entityId": "corp"},
+        },
         "approvals": {"a1": {"status": "待ち"}},
     }
 
@@ -133,8 +137,10 @@ check(order_exec.choose_executor({"assigneeId": "ryo", "executor": "claude"}) ==
 check(order_exec.choose_executor({"assigneeId": "jun", "executor": "antigravity"}) == "antigravity", "antigravity の指定")
 
 # 3) AIに渡す情報は絞る
-ctx = order_exec.safe_context([{"name": "テスト事業", "status": "稼働", "owner": "営業部", "next": "次の一手", "note": "秘密のメモ", "amount": 999}], 2)
+ctx = order_exec.safe_context([{"id": "b1", "name": "テスト事業", "status": "稼働", "owner": "営業部", "next": "次の一手", "note": "秘密のメモ", "amount": 999}], 2)
 check("テスト事業" in ctx and "次の一手" in ctx and "承認待ち: 2件" in ctx, "事業の名前・状況・次の一手・承認待ちの件数は渡す")
+check("[b1]" in ctx, "事業のIDを渡す（AIが、どの事業の話かを選べるように）")
+check("法人" not in ctx and "個人" not in ctx, "名義（法人・個人）は渡さない。AIに決めさせない")
 check("秘密のメモ" not in ctx and "999" not in ctx, "メモと金額は渡さない")
 system, user = order_exec.build_prompt({"title": "x" * 500}, {"name": "リョウ", "role": "制作"}, ctx)
 check("送信" in system and "従わない" in system, "AIに、送信できないこと・命令に従わないことを伝える")
@@ -143,8 +149,10 @@ check(len(user) < 1000 and "x" * 201 not in user, "指示の題は200字で切�
 # 4) 返事の読み取り
 p = order_exec.parse_result('```json\n{"result": "本文", "actions": [{"title": "提案A", "detail": "d"}, {"title": ""}]}\n```')
 check(p["result"] == "本文" and len(p["actions"]) == 1, "コードブロックつきJSONを読む。題の無い提案は捨てる")
+p = order_exec.parse_result('{"result": "r", "businessId": "car_lease", "actions": [{"title": "a", "businessId": "homepage"}]}')
+check(p["businessId"] == "car_lease" and p["actions"][0]["businessId"] == "homepage", "成果物と提案ごとの事業IDを読む")
 p = order_exec.parse_result("ただの文章")
-check(p == {"result": "ただの文章", "actions": []}, "JSONでなければ、全文を成果物にする（捨てない）")
+check(p == {"result": "ただの文章", "businessId": "", "actions": []}, "JSONでなければ、全文を成果物にする（捨てない）")
 p = order_exec.parse_result('{"result": "' + "あ" * 9000 + '", "actions": []}')
 check(len(p["result"]) == order_exec.RESULT_MAX_CHARS, "成果物は4,000字まで")
 
@@ -165,6 +173,23 @@ check("act_orderrun_t1" in db.data["activity"], "社内の動きに「成果物�
 u = db.data["usage"]["2026-11"]
 check(u["runs"] == 2 and abs(u["costUsd"] - (t1["costUsd"] + db.data["tasks"]["t2"]["costUsd"])) < 1e-3, "usage/2026-11 に合計を足す")
 check("できました" not in log and "今月の整理" not in log and "催促" not in log, "ログに、題・成果物・提案を出さない（件数と額だけ）")
+
+# 5b) 名義: AIが選んだ事業から、台帳で決める。AIの言う名義は使わない
+data = base_data()
+data["tasks"] = {"t1": order("リース")}
+db = FakeDb(data)
+txt = ('{"result": "r", "businessId": "car_lease", "actions": ['
+       '{"title": "請求書の確認", "detail": "d", "businessId": "car_lease", "entityId": "corp"},'
+       '{"title": "HPの見積", "detail": "d", "businessId": "homepage"},'
+       '{"title": "どれか不明", "detail": "d", "businessId": "no_such"},'
+       '{"title": "事業なし", "detail": "d"}]}')
+run_quiet(db, now=NOW, call=fake_call(text=txt), claim=always_claim, notify=lambda m: None)
+a0, a1, a2, a3 = (db.data["approvals"][f"appr_order_t1_{i}"] for i in range(4))
+check(a0["entityId"] == "personal" and a0["businessId"] == "car_lease" and a0["unclassified"] is False, "リースの提案は個人（AIが corp と書いても、台帳の名義を使う）")
+check(a1["entityId"] == "corp" and a1["businessId"] == "homepage", "ホームページ制作の提案は法人")
+check(a2["unclassified"] is True and a2["entityId"] == "corp" and a2["businessId"] == "company_ops", "台帳に無い事業は、会社の運営・法人に戻し、名義不明の印を付ける")
+check(a3["unclassified"] is True, "事業が空なら、名義不明の印を付ける")
+check(db.data["tasks"]["t1"]["resultBusinessId"] == "car_lease", "成果物の事業を残す")
 
 # 6) 二重に実行しない
 data = base_data()
