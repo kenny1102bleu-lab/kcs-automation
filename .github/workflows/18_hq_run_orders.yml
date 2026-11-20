@@ -5,10 +5,13 @@ name: WF-18 社長の指示をAIが実行する
 # 月の枠（既定5ドル）で止まる。80%で警告、100%で停止。使った額は Firestore の usage/YYYY-MM。
 # このリポジトリは公開。ログに出すのは件数と合計額だけ（指示の題・成果物・名前は出さない）。
 #
-# いまは手動実行だけ（schedule なし）。1件だけの試験で実測の単価を確かめてから、15分おきの定時を足す。
+# 15分おきに動く（試験で、Claude の1件が約0.02ドルと確かめた。2026-11-20）。待ちの指示が無ければ、AIは呼ばず、すぐ終わる。
+# 手動実行（dry_run=true で件数と今月の使用額だけ確認）もできる。
 # 鍵は新しく増やさない: FIREBASE_SERVICE_ACCOUNT_JSON / BOT_WEBHOOK_URL / ANTHROPIC_API_KEY / GEMINI_API_KEY（どれも既存）。
 
 on:
+  schedule:
+    - cron: '3,18,33,48 * * * *'  # 15分おき（正時のアクセス集中を避ける）
   workflow_dispatch:
     inputs:
       dry_run:
@@ -47,5 +50,5 @@ jobs:
           if [ "$DRY_RUN" = "true" ]; then
             python scripts/hq_run_orders.py --dry-run
           else
-            python scripts/hq_run_orders.py --max "${MAX_ORDERS:-1}"
+            python scripts/hq_run_orders.py --max "${MAX_ORDERS:-3}"
           fi
