@@ -132,7 +132,8 @@ del os.environ["KCS_ORDER_BUDGET_USD"]
 
 # 2) 振り分け
 check(order_exec.choose_executor({"assigneeId": "jun"}) == "claude", "ジュン宛は Claude")
-check(order_exec.choose_executor({"assigneeId": "ryo"}) == "gemini", "ほかの担当は Gemini")
+check(order_exec.choose_executor({"assigneeId": "ryo"}) == "claude", "ほかの担当も、自動のときは Claude（Gemini は課金が止まっている間、自動では選ばない）")
+check(order_exec.choose_executor({"assigneeId": "ryo", "executor": "gemini"}) == "gemini", "Gemini は、指定したときだけ使う")
 check(order_exec.choose_executor({"assigneeId": "ryo", "executor": "claude"}) == "claude", "executor の指定が先")
 check(order_exec.choose_executor({"assigneeId": "jun", "executor": "antigravity"}) == "antigravity", "antigravity の指定")
 
@@ -163,7 +164,8 @@ db = FakeDb(data)
 call = fake_call()
 out, log = run_quiet(db, now=NOW, call=call, claim=always_claim, notify=lambda m: None)
 check(out["done"] == 2 and out["failed"] == 0, "2件とも実行")
-check([c["executor"] for c in call.calls] == ["claude", "gemini"], "古い順に、ジュン宛=Claude・リョウ宛=Gemini")
+check([c["executor"] for c in call.calls] == ["claude", "claude"], "古い順に、どちらも Claude")
+check(call.calls[0]["model"] != call.calls[1]["model"] and call.calls[1]["model"] == "claude-sonnet-5-5", "ジュン宛は上位モデル、ほかは Sonnet 5.5")
 t1 = db.data["tasks"]["t1"]
 check(t1["run"] == "review" and t1["result"] == "できました" and t1["proposals"] == 1, "成果物を tasks に書き、review にする")
 check(t1["costUsd"] > 0 and t1["model"].startswith("claude"), "費用とモデルを残す")

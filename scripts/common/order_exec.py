@@ -19,11 +19,12 @@ MAX_PROPOSALS = 5
 
 
 def choose_executor(order: dict) -> str:
-    """指示に executor があればそれ。auto・未指定は、ジュン専務宛なら Claude、それ以外は Gemini。"""
+    """指示に executor があればそれ。auto・未指定は Claude（ジュン専務宛は上位モデル、ほかは Sonnet 5.5）。
+    Gemini は、API の課金が止まっている間（2026-11-20 に 402 を確認）、自動では選ばない。指定したときだけ使う。"""
     ex = order.get("executor")
     if ex in EXECUTORS:
         return ex
-    return "claude" if order.get("assigneeId") == "jun" else "gemini"
+    return "claude"
 
 
 def classify(business_id: str, businesses: list[dict], fallback: dict) -> dict:
