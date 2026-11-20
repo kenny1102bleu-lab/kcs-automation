@@ -1,0 +1,51 @@
+name: WF-18 社長の指示をAIが実行する
+
+# 中枢アプリの「AIに任せる」指示（Firestore の tasks・run:'queued'）を、担当のAIスタッフが実行する。
+# 設計: kcs-hq/departments/system/ai_execution_design.md（2026-11-20）
+# 月の枠（既定5ドル）で止まる。80%で警告、100%で停止。使った額は Firestore の usage/YYYY-MM。
+# このリポジトリは公開。ログに出すのは件数と合計額だけ（指示の題・成果物・名前は出さない）。
+#
+# いまは手動実行だけ（schedule なし）。1件だけの試験で実測の単価を確かめてから、15分おきの定時を足す。
+# 鍵は新しく増やさない: FIREBASE_SERVICE_ACCOUNT_JSON / BOT_WEBHOOK_URL / ANTHROPIC_API_KEY / GEMINI_API_KEY（どれも既存）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true なら実行せず、待ちの件数と今月の使用額だけ確かめる（AIは呼ばない）'
+        default: 'true'
+      max_orders:
+        description: '1回で実行する最大件数（1〜5）'
+        default: '1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hq-run-orders
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests firebase-admin anthropic
+      - name: 待ちの指示を実行する
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          BOT_WEBHOOK_URL: ${{ secrets.BOT_WEBHOOK_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          MAX_ORDERS: ${{ github.event.inputs.max_orders }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python scripts/hq_run_orders.py --dry-run
+          else
+            python scripts/hq_run_orders.py --max "${MAX_ORDERS:-1}"
+          fi
