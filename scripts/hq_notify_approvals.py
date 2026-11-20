@@ -20,8 +20,10 @@ from scripts import hq_discord as hd  # noqa: E402
 
 def message_of(a: dict) -> str:
     dept = a.get("department") or ""
+    entity = hd.ENTITY_LABEL.get(a.get("entityId"), "")
+    mark = f"【{entity}】" if entity else ""
     return (
-        f"**承認待ち**（{dept}）\n{a.get('title', '')}\n"
+        f"**承認待ち**{mark}（{dept}）\n{a.get('title', '')}\n"
         "→ 中枢アプリの「秘書室」で、承認・却下してください"
     )
 
@@ -33,7 +35,7 @@ def run(db, dry_run: bool = False, send=None, now=None) -> dict:
     if not doc.exists:
         print("[通知] Discord の対応表がまだありません（チャンネル作成が先）。何もしません")
         return {"skipped": True, "sent": 0, "failed": 0, "new": 0}
-    channels = (doc.to_dict() or {}).get("channels", {})
+    channels = hd.effective_channels(doc.to_dict() or {})
     businesses = {d.id: d.to_dict() for d in db.collection("businesses").stream()}
     waiting = [
         d for d in db.collection("approvals").where("status", "==", "待ち").stream()

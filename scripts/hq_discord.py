@@ -72,6 +72,30 @@ def manager_channel_names(staff_rows: list) -> dict:
     return out
 
 
+ENTITY_LABEL = {"corp": "法人", "personal": "個人"}  # 名義。承認待ちの通知に付けて、法人と個人を見分ける
+
+
+def effective_channels(doc: dict) -> dict:
+    """対応表から、使うチャンネルを決める。すでにあるチャンネルを使うと決めたもの（existing）を、新しく作ったもの（channels）より優先する。"""
+    out = dict(doc.get("channels") or {})
+    out.update({k: v for k, v in (doc.get("existing") or {}).items() if v})
+    return out
+
+
+def valid_link(link: dict) -> dict:
+    """「すでにあるチャンネルを使う」の指定を検査する。キーは general か mgr_◯◯、値はチャンネルID（数字）。"""
+    if not isinstance(link, dict) or not link:
+        raise ValueError("指定が空です")
+    out = {}
+    for k, v in link.items():
+        if not (k == GENERAL or (isinstance(k, str) and k.startswith("mgr_") and len(k) > 4)):
+            raise ValueError("キーは general か mgr_◯◯ にしてください")
+        if not (isinstance(v, str) and v.isdigit() and 15 <= len(v) <= 22):
+            raise ValueError("値はチャンネルID（数字）にしてください")
+        out[k] = v
+    return out
+
+
 def channel_for(approval: dict, businesses: dict, channels: dict) -> str:
     """承認待ちを送るチャンネル。事業の担当マネージャーのチャンネル。無ければ総合。"""
     biz = businesses.get(approval.get("businessId")) or {}
