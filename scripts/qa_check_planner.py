@@ -71,6 +71,9 @@ ideas = pl.parse_ideas("```json\n" + raw + "\n```", PLAN_A, {"t_storm"})
 check([i["title"] for i in ideas] == ["案1", "案ID違い"], "形式が決まりの外・題が空・点が無い案を捨てる")
 check(ideas[0]["topicId"] == "t_storm" and ideas[1]["topicId"] == "", "知らない話題IDは空にする")
 check(pl.parse_ideas("ただの文章", PLAN_A, set()) == [], "JSONでなければ、空（捨てずに失敗として扱う）")
+cut = raw[: raw.index('"案ID違い"') - 20]  # 最後の案の途中で切れた返事
+check([i["title"] for i in pl.parse_ideas(cut, PLAN_A, {"t_storm"})] == ["案1"], "途中で切れた返事からも、閉じた案は拾う（形式外などは同じく捨てる）")
+check([i["title"] for i in pl.parse_ideas("案を出しました。\n" + raw + "\n以上です", PLAN_A, {"t_storm"})] == ["案1", "案ID違い"], "JSONの前後に文章があっても読む")
 
 # 4) 規則で外す（AIの自己採点を信じない）
 check(pl.guard(idea("首相の会談を占う", "予想・占い"), PLAN_A) != "", "政治の語を含む案は外す")
@@ -208,6 +211,11 @@ check(res5["ok"] and res5["topics"] == 2 and not c4.calls and "ideas" not in db5
 db6 = FakeDb({"knowledge": {"plan_uranai": PLAN_A}, "topics": data["topics"]})
 res6, _ = quiet(lambda: hp.run_account(db6, "uranai", now=NOW, call=fake_call(text="ごめんなさい、できません")))
 check(res6["ok"] and res6["ideas"] == 0 and db6.data["usage"]["plan-2026-11"]["costUsd"] > 0, "JSONでない返事は、案0件。費用は記録する")
+check(list(db6.data.get("plan_debug", {}).values())[0]["text"] == "ごめんなさい、できません", "読めなかった返事は、非公開の plan_debug に残す")
+res7, log7 = quiet(lambda: hp.run_account(FakeDb({"knowledge": {"plan_uranai": PLAN_A}, "topics": data["topics"]}), "uranai", now=NOW,
+                                         call=lambda m, s_, u: {"text": raw_ok[:500], "input_tokens": 10, "output_tokens": 16000, "stop_reason": "max_tokens"}))
+check("終わり方 max_tokens" in log7 and "出力 16000トークン" in log7, "ログに、出力の量と終わり方を出す（上限で切れたか分かる）")
+check(hp.MAX_OUTPUT_TOKENS >= 16000, "出力の上限は、20案が入る大きさ")
 
 # 9) キャラクターシート: 話題との相性・プロンプト・避ける語・好きな形式
 CHAR = {
