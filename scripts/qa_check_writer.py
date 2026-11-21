@@ -79,6 +79,9 @@ check(any("簡体字" in p for p in pw.review({"text": "カムバ待ってむり
 check(pw.review({"text": "カムバ待ってむり 等不及了，这次也太好了吧"}, HAL, FACTS) == [], "HAL: 簡体字の併記があれば通す")
 check(any("繁体字" in p or "traditional" in p for p in pw.review({"text": "待ってむり 這次也太好了吧"}, HAL, FACTS)), "HAL: 繁体字は差し戻す")
 check(any("AI" in p or "ai_disclosure" in p for p in pw.review({"text": "私はAIだけど 这个很好"}, HAL, FACTS)), "HAL: AI自認は差し戻す")
+check(any("画像" in p for p in pw.review({"text": "夜ごとの気分、カードに書いておいたよ"}, URANAI, FACTS)), "まだ付けられないカード・画像に触れていたら差し戻す")
+check("カードや動画の中身を文章として本文に書く" in system, "図解カード・台本の案も、中身を本文に書くよう求める")
+check(pw.review({"text": "ショート動画を見てほしいんだワン"}, MORU, FACTS) == [], "もる: 動画への誘導は通す")
 check(any("だワン" in p for p in pw.review({"text": "雪がつめたいよ"}, MORU, FACTS)), "もる: 語尾の「だワン」が無ければ差し戻す")
 check(pw.review({"text": "雪ってつめたいんだワン🐾"}, MORU, FACTS) == [], "もる: 「だワン」があれば通す")
 

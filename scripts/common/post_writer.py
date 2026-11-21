@@ -18,6 +18,9 @@ PR_WORDS = ("PR", "ＰＲ", "広告")
 PR_BUSINESSES = {"adult", "sunakun"}
 # 断定（占い・もる）の語
 ASSERT_WORDS = ("必ず", "絶対", "100%", "１００％", "確実に")
+# 画像・動画はまだ付けられない（2026-11-21 の下書きに「カードに書いておいたよ」があった）。無いものに触れる語
+# （「動画」は入れない。もるは YouTube ショートへの誘導で「動画を見てね」と書くため）
+NO_MEDIA_WORDS = ("カードに書", "カードにまとめ", "画像を", "画像で", "画像に", "図を見", "下の図", "添付")
 # 簡体字にしかない、よく使う字（HAL の中国語の併記を確かめる。日本語と同じ形の字は入れない）
 SIMPLIFIED_HINT = "们这个么说对时还过吗呢吧哦"
 
@@ -29,6 +32,7 @@ SYSTEM = (
     "- 「今日」「今夜」「明日」は、案ごとの【投稿予定日】を基準に書く。\n"
     "- 本文に URL を書かない。リンクを置く案は、本文で「リプ欄に置いておくね」のように誘導し、reply にリプ欄の一言を書く（URLは書かない。あとで人が入れる）。リンクを置かない案は reply を空にする。\n"
     "- 商品やサービスの紹介でリンクを置く案は、本文に【PR】を入れる。\n"
+    "- 画像・カード・動画は、まだ付けられない。「図解カード」「ショート動画の台本」の案も、カードや動画の中身を文章として本文に書く。「カードに書いた」「画像を見て」など、まだ無いものに触れない。\n"
     "- 長さは、日本語で140字以内（Xの上限）。キャラの「長さ」の目安を優先する。\n"
     "- アカウントの決まり（rules）を必ず守る。\n"
     '出力はJSONだけ（前後に文章を付けない）: {"posts": [{"index": 0, "text": "投稿の本文", "reply": "リプ欄の一言（無ければ空）"}]}'
@@ -141,6 +145,9 @@ def review(post: dict, plan: dict, facts_text: str = "") -> list[str]:
     for w in plan.get("avoidWords", []):
         if w and w in full:
             problems.append(f"キャラが避ける語（{w}）")
+    w = next((w for w in NO_MEDIA_WORDS if w in full), "")
+    if w:
+        problems.append(f"まだ付けられない画像・動画に触れている（{w}）")
     if x_weight(text) > X_MAX_WEIGHT:
         problems.append(f"長すぎる（Xの数え方で {x_weight(text)} / {X_MAX_WEIGHT}）")
     if reply and x_weight(reply) > X_MAX_WEIGHT:

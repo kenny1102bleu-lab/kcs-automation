@@ -1,0 +1,52 @@
+name: WF-23 毎朝の企画会議（話題 → 案 → 下書き → 承認待ち）
+
+# 毎朝、話題を集め（WF-19 と同じ）、アカウントごとに企画会議で案を出し（WF-20 と同じ）、選ばれた案を下書きにして承認待ちに出す（WF-21 と同じ）。
+# 投稿はしない。承認待ちは最後に Discord に知らせ（WF-16 と同じ）、謙一が中枢アプリの「秘書室」で承認・却下する。
+# 対象のアカウントは、リポジトリの変数 KCS_DAILY_ACCOUNTS（無ければ uranai,emma）。
+# 同じ日に2回お金を使わない: 企画会議は、今日の案があるアカウントを飛ばす。ライターは、下書き済みの案を書かない。
+# AI は Claude（既定 Opus 5.5）。費用は企画会議の月の枠（usage/plan-YYYY-MM・既定30ドル・個人の費用）。80%で警告・100%で止まる。
+# 2アカウントで、1日あたり約0.3〜0.5ドル（2026-11-21 の実測: 企画会議 0.14〜0.15ドル・ライター 0.05ドル／アカウント）。
+# 失敗したら、WF-22（見張り）が Discord のシステム部へ知らせる。このリポジトリは公開。ログに出すのは件数と費用だけ。
+
+on:
+  schedule:
+    - cron: '30 21 * * *'  # 毎朝 6時30分（日本時間）
+  workflow_dispatch:
+    inputs:
+      accounts:
+        description: 'アカウントのID（カンマ区切り。空なら変数 KCS_DAILY_ACCOUNTS か uranai,emma）'
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hq-plan
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      BOT_WEBHOOK_URL: ${{ secrets.BOT_WEBHOOK_URL }}
+      ACCOUNTS: ${{ github.event.inputs.accounts || vars.KCS_DAILY_ACCOUNTS || 'uranai,emma' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests firebase-admin anthropic
+      - name: 話題を集める
+        run: python scripts/hq_scout.py
+      - name: 企画会議（今日の案があるアカウントは飛ばす）
+        if: always()  # 話題集めが失敗しても、Firestore にある話題で進める
+        run: python scripts/hq_plan.py --account "$ACCOUNTS" --skip-if-done
+      - name: 下書きを書いて、承認待ちに出す
+        if: always()
+        run: python scripts/hq_write.py --account "$ACCOUNTS"
+      - name: 承認待ちを Discord に知らせる（WF-16 の定時実行は GitHub の都合で数時間おくれるため、ここで送る）
+        if: always()
+        run: python scripts/hq_notify_approvals.py

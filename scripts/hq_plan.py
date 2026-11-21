@@ -59,7 +59,8 @@ def load_topics(db, now: dt.datetime, get=None) -> list[dict]:
     return topics
 
 
-def run_account(db, account: str, dry_run: bool = False, now=None, call=None, get=None, n: int = planner.N_IDEAS) -> dict:
+def run_account(db, account: str, dry_run: bool = False, now=None, call=None, get=None, n: int = planner.N_IDEAS,
+                skip_if_done: bool = False) -> dict:
     now = now or dt.datetime.now(dt.timezone.utc)
     snap = db.collection("knowledge").document(f"plan_{account}").get()
     if not snap.exists:
@@ -76,10 +77,13 @@ def run_account(db, account: str, dry_run: bool = False, now=None, call=None, ge
 
     topics = planner.eligible_topics(load_topics(db, now, get), plan.get("topicPolicy") or {}, now.isoformat(), plan)
     cutoff = (now - dt.timedelta(days=planner.RECENT_DAYS)).isoformat()
-    recent = [
-        d.to_dict() or {} for d in db.collection("ideas").where("accountId", "==", account).stream()
-        if str((d.to_dict() or {}).get("createdAt") or "") >= cutoff
-    ]
+    mine = [d.to_dict() or {} for d in db.collection("ideas").where("accountId", "==", account).stream()]
+    recent = [r for r in mine if str(r.get("createdAt") or "") >= cutoff]
+    # 毎朝の自動実行（WF-23）で、同じ日に2回お金を使わない（やり直し・手動実行と重なったとき）
+    today = now.astimezone(JST).strftime("%Y%m%d")
+    if skip_if_done and any(str(r.get("date") or "") == today for r in mine):
+        print(f"[企画] {account}: 今日の案はもうあるので、飛ばします")
+        return {"ok": True, "skipped": True}
     recent_formats = [r.get("format", "") for r in recent]
     tail = "（dry-run: AIは呼びません）" if dry_run else ""
     print(f"[企画] {account}: 使える話題 {len(topics)}件・直近の案 {len(recent)}件・今月の費用 ${spent:.2f} / 枠 ${budget:.0f}（{level}）{tail}")
@@ -126,6 +130,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--account", default="uranai,emma", help="アカウントのID（カンマ区切り）")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--skip-if-done", action="store_true", help="今日の案がもうあるアカウントは飛ばす（毎朝の自動実行用）")
     args = ap.parse_args()
     db = hd.firestore_client()
     if db is None:
@@ -133,7 +138,7 @@ def main() -> int:
         return 1
     ok = True
     for account in [a.strip() for a in args.account.split(",") if a.strip()]:
-        ok = run_account(db, account, dry_run=args.dry_run)["ok"] and ok
+        ok = run_account(db, account, dry_run=args.dry_run, skip_if_done=args.skip_if_done)["ok"] and ok
     return 0 if ok else 1
 
 
