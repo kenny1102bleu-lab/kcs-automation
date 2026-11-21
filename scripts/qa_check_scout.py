@@ -69,6 +69,14 @@ check(all(c["person"] == "none" and c["safe"] and c["sources"] == ["calendar"] f
 check(ts.calendar_topics(dt.datetime(2027, 1, 7, 0, 0, tzinfo=dt.timezone.utc), 7)[-1]["title"].endswith("成人の日") or any("成人の日" in c["title"] for c in ts.calendar_topics(dt.datetime(2027, 1, 7, 0, 0, tzinfo=dt.timezone.utc), 7)), "成人の日（1月の第2月曜）")
 age = ts.moon_age(dt.datetime(2000, 1, 6, 18, 14, tzinfo=dt.timezone.utc))
 check(abs(age) < 1e-6 or abs(age - ts.SYNODIC) < 1e-6, "月齢の基準日（2000-01-06 の新月）は月齢0")
+# 月の満ち欠けは、実際の瞬間で日付を決める（平均の周期だけだと1日ずれる）
+ev = dict(ts.moon_events(dt.date(2026, 11, 20), 10))
+check(ev.get(dt.date(2026, 11, 24), "").startswith("満月（23時5"), "2026-11 の満月は 24日 23時53分ごろ（25日ではない）")
+check(dt.date(2026, 11, 25) not in ev, "満月を25日に出さない")
+t_eclipse = ts.moon_phase_time(round((2024.27 - 2000) * 12.3685))
+check(abs((t_eclipse - dt.datetime(2024, 4, 8, 18, 21, tzinfo=dt.timezone.utc)).total_seconds()) < 600, "2024-04-08 の新月（日食）が10分以内で合う")
+t_jan = ts.moon_phase_time(round((2026.0 - 2000) * 12.3685 - 0.5) + 0.5)
+check(abs((t_jan - dt.datetime(2026, 1, 3, 10, 3, tzinfo=dt.timezone.utc)).total_seconds()) < 600, "2026-01-03 の満月が10分以内で合う")
 
 
 # 5) 収集: 1つ取れなくても止めない。全部取れなければ失敗

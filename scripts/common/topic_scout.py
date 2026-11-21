@@ -8,6 +8,7 @@
 - 純粋関数だけ（通信・Firestore は呼び出し側）。公開リポジトリなので、ログに見出しは出さない（件数だけ）。
 """
 import datetime as dt
+import math
 import hashlib
 import re
 import xml.etree.ElementTree as ET
@@ -163,17 +164,45 @@ def moon_age(t: dt.datetime) -> float:
     return ((t - NEW_MOON_EPOCH).total_seconds() / 86400) % SYNODIC
 
 
+# 新月・満月の瞬間（Meeus『Astronomical Algorithms』49章の主な項。誤差は数分）。
+# 平均の周期だけだと半日ほどずれて、日付が1日違うことがある（2026-11 の満月を 25日と出していた。正しくは 24日 23:53）。
+_NEW_TERMS = [(-0.40720, 0, 0, 1, 0), (0.17241, 1, 1, 0, 0), (0.01608, 0, 0, 2, 0), (0.01039, 0, 0, 0, 2), (0.00739, 1, -1, 1, 0),
+              (-0.00514, 1, 1, 1, 0), (0.00208, 2, 2, 0, 0), (-0.00111, 0, 0, 1, -2), (-0.00057, 0, 0, 1, 2), (0.00056, 1, 1, 2, 0),
+              (-0.00042, 0, 0, 3, 0), (0.00042, 1, 1, 0, 2), (0.00038, 1, 1, 0, -2), (-0.00024, 1, -1, 2, 0)]
+_FULL_TERMS = [(-0.40614, 0, 0, 1, 0), (0.17302, 1, 1, 0, 0), (0.01614, 0, 0, 2, 0), (0.01043, 0, 0, 0, 2), (0.00734, 1, -1, 1, 0),
+               (-0.00515, 1, 1, 1, 0), (0.00209, 2, 2, 0, 0), (-0.00111, 0, 0, 1, -2), (-0.00057, 0, 0, 1, 2), (0.00056, 1, 1, 2, 0),
+               (-0.00042, 0, 0, 3, 0), (0.00042, 1, 1, 0, 2), (0.00038, 1, 1, 0, -2), (-0.00024, 1, -1, 2, 0)]
+_JD_UNIX = 2440587.5  # 1970-01-01 0時（UTC）のユリウス日
+
+
+def moon_phase_time(k: float) -> dt.datetime:
+    """k が整数なら新月、.5 なら満月の瞬間（UTC）。k=0 は 2000-01-06 の新月。"""
+    T = k / 1236.85
+    jde = 2451550.09766 + 29.530588861 * k + 0.00015437 * T ** 2 - 0.000000150 * T ** 3 + 0.00000000073 * T ** 4
+    E = 1 - 0.002516 * T - 0.0000074 * T ** 2
+    M = math.radians(2.5534 + 29.10535670 * k - 0.0000014 * T ** 2)
+    Mp = math.radians(201.5643 + 385.81693528 * k + 0.0107582 * T ** 2 + 0.00001238 * T ** 3)
+    F = math.radians(160.7108 + 390.67050284 * k - 0.0016118 * T ** 2 - 0.00000227 * T ** 3)
+    Om = math.radians(124.7746 - 1.56375588 * k + 0.0020672 * T ** 2)
+    terms = _FULL_TERMS if abs(k % 1 - 0.5) < 1e-9 else _NEW_TERMS
+    # (係数, Eの乗数, M, M', F)。E の乗数は M の係数の絶対値と同じ
+    corr = sum(c * E ** e * math.sin(m * M + mp * Mp + f * F) for c, e, m, mp, f in terms) - 0.00017 * math.sin(Om)
+    jd_ut = jde + corr - 69 / 86400  # 力学時 → 世界時（ΔT 約69秒）
+    return dt.datetime.fromtimestamp((jd_ut - _JD_UNIX) * 86400, tz=UTC)
+
+
 def moon_events(start: dt.date, days: int) -> list[tuple[dt.date, str]]:
-    """新月・満月（目安・前後半日ほどずれる）。日本時間の正午の月齢で、いちばん近い日をとる。"""
+    """start から days 日のうちの、新月・満月（日本時間の日付と、だいたいの時刻）。"""
+    end = start + dt.timedelta(days=days)
+    k0 = math.floor((start.year + (start.timetuple().tm_yday - 1) / 365.25 - 2000) * 12.3685) - 2
     out = []
-    for d in range(days):
-        day = start + dt.timedelta(days=d)
-        age = moon_age(dt.datetime(day.year, day.month, day.day, 3, 0, tzinfo=UTC))  # JST 正午
-        if min(age, SYNODIC - age) < 0.5:
-            out.append((day, "新月（目安）"))
-        elif abs(age - SYNODIC / 2) < 0.5:
-            out.append((day, "満月（目安）"))
-    return out
+    for i in range(0, 2 * (days // 29 + 4)):
+        k = k0 + i / 2
+        t = moon_phase_time(k).astimezone(JST)
+        if start <= t.date() < end:
+            name = "満月" if i % 2 else "新月"
+            out.append((t.date(), f"{name}（{t.hour}時{t.minute:02d}分ごろ）"))
+    return sorted(out)
 
 
 def calendar_topics(now: dt.datetime, days: int = 14) -> list[dict]:
