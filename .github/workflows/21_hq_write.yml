@@ -1,0 +1,50 @@
+name: WF-21 ライター（選ばれた案を完成した投稿にし、承認待ちに出す）
+
+# 企画会議（WF-20）で選ばれた案を、そのキャラの完成した1投稿にする。審査（語の規則・情報接地）を通ったものだけ approvals に「待ち」で出す。
+# 投稿はしない。承認待ちは WF-16 が Discord に知らせ、謙一が中枢アプリの「秘書室」で承認・却下する。
+# 設計: kcs-hq/departments/clients/planning_meeting_design.md（作る順番の4）。
+# AI は Claude（既定 Opus 5.5）。費用は企画会議と同じ月の枠（usage/plan-YYYY-MM・既定30ドル・個人の費用）。
+# このリポジトリは公開。ログに出すのは件数と費用だけ。
+#
+# いまは手動実行だけ（最初の試験。1回ずつ、結果を見て決める）。
+# 鍵は新しく増やさない: FIREBASE_SERVICE_ACCOUNT_JSON / ANTHROPIC_API_KEY（どちらも既存）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      account:
+        description: 'アカウントのID（カンマ区切り。例: uranai,emma）'
+        default: 'uranai'
+      dry_run:
+        description: 'true なら、AIを呼ばず、書く案の件数だけ確かめる'
+        default: 'true'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hq-plan
+  cancel-in-progress: false
+
+jobs:
+  write:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests firebase-admin anthropic
+      - name: 下書きを書く
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ACCOUNT: ${{ github.event.inputs.account }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python scripts/hq_write.py --account "$ACCOUNT" --dry-run
+          else
+            python scripts/hq_write.py --account "$ACCOUNT"
+          fi
