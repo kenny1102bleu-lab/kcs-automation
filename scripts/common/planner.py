@@ -128,18 +128,18 @@ def build_prompt(plan: dict, topics: list[dict], recent: list[dict], n: int = N_
     return system, user
 
 
-def _raw_ideas(text: str) -> list:
-    """返事から ideas の配列を取り出す。前後の文章は無視する。途中で切れていたら、閉じている案だけ拾う。"""
+def _raw_ideas(text: str, key: str = "ideas") -> list:
+    """返事から key（既定 ideas）の配列を取り出す。前後の文章は無視する。途中で切れていたら、閉じている要素だけ拾う。ライターも使う。"""
     s = re.sub(r"^```(?:json)?\s*|\s*```$", "", (text or "").strip())
     start = s.find("{")
     if start < 0:
         return []
     try:
         data = json.loads(s[start: s.rfind("}") + 1])
-        return (data.get("ideas") if isinstance(data, dict) else None) or []
+        return (data.get(key) if isinstance(data, dict) else None) or []
     except ValueError:
         pass
-    m = re.search(r'"ideas"\s*:\s*\[', s)
+    m = re.search(r'"' + re.escape(key) + r'"\s*:\s*\[', s)
     if not m:
         return []
     dec, pos, out = json.JSONDecoder(), m.end(), []
