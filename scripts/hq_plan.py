@@ -17,11 +17,28 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts import hq_discord as hd  # noqa: E402
 from scripts import hq_scout as hs  # noqa: E402
 from scripts.common import ai_budget, planner  # noqa: E402
-from scripts.hq_run_orders import call_claude  # noqa: E402
 
 JST = dt.timezone(dt.timedelta(hours=9))
 DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_BUDGET_USD = 30.0
+# 20案のJSONは日本語で長い（2026-11-21 の初回は 6,000 で切れて、案0件になった）。考える分も含む。1回の天井は約0.34ドル
+MAX_OUTPUT_TOKENS = 16000
+
+
+def call_claude(model: str, system: str, user: str) -> dict:
+    from scripts.common.claude_client import client  # 鍵が無いと import で落ちるので、使うときだけ読む
+
+    # 長い出力は、ストリーミングで受ける（時間切れを避ける）
+    with client.messages.stream(
+        model=model,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        system=system,
+        messages=[{"role": "user", "content": user}],
+        extra_body={"output_config": {"effort": "medium"}},
+    ) as stream:
+        r = stream.get_final_message()
+    text = "".join(b.text for b in r.content if getattr(b, "type", "") == "text")
+    return {"text": text, "input_tokens": r.usage.input_tokens, "output_tokens": r.usage.output_tokens, "stop_reason": r.stop_reason}
 
 
 def plan_budget() -> float:
@@ -80,6 +97,13 @@ def run_account(db, account: str, dry_run: bool = False, now=None, call=None, ge
     ideas = planner.parse_ideas(res["text"], plan, {t["id"] for t in topics})
     chosen = planner.select(ideas, plan, recent_formats)
     date = now.astimezone(JST).strftime("%Y%m%d")
+    stop = res.get("stop_reason") or ""
+    if not ideas:
+        # お金を使った返事なので、捨てずに非公開の plan_debug に残す（ログには中身を出さない）
+        db.collection("plan_debug").document(f"{date}_{account}").set({
+            "accountId": account, "model": model, "stopReason": stop, "outputTokens": res["output_tokens"],
+            "text": (res.get("text") or "")[:200000], "createdAt": now.isoformat(),
+        })
     for i, idea in enumerate(chosen):
         db.collection("ideas").document(f"idea_{date}_{account}_{i:02d}").set({
             **idea, "accountId": account, "date": date, "rank": i, "model": model,
@@ -91,8 +115,10 @@ def run_account(db, account: str, dry_run: bool = False, now=None, call=None, ge
     counts = {s: sum(1 for c in chosen if c["status"] == s) for s in ("選ばれた", "実験枠", "候補", "却下")}
     print(
         f"[企画] {account}: 案 {len(ideas)}件 → 選ばれた {counts['選ばれた']}・実験枠 {counts['実験枠']}・候補 {counts['候補']}・却下 {counts['却下']}"
-        f"（費用 ${cost:.3f}・今月 ${spent + cost:.2f} / ${budget:.0f}）"
+        f"（費用 ${cost:.3f}・今月 ${spent + cost:.2f} / ${budget:.0f}・出力 {res['output_tokens']}トークン・終わり方 {stop or '不明'}）"
     )
+    if not ideas:
+        print("[企画] 案を読めませんでした。返事は Firestore の plan_debug に残しました")
     return {"ok": True, "ideas": len(ideas), "cost": cost, "counts": counts}
 
 

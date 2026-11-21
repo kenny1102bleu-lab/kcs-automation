@@ -128,16 +128,38 @@ def build_prompt(plan: dict, topics: list[dict], recent: list[dict], n: int = N_
     return system, user
 
 
-def parse_ideas(text: str, plan: dict, topic_ids: set[str]) -> list[dict]:
-    """AIの返事から案を読む。形式が決まりの外・点が足りない・題が空の案は捨てる。JSONでなければ空。"""
-    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", (text or "").strip())
-    try:
-        data = json.loads(raw)
-    except ValueError:
+def _raw_ideas(text: str) -> list:
+    """返事から ideas の配列を取り出す。前後の文章は無視する。途中で切れていたら、閉じている案だけ拾う。"""
+    s = re.sub(r"^```(?:json)?\s*|\s*```$", "", (text or "").strip())
+    start = s.find("{")
+    if start < 0:
         return []
+    try:
+        data = json.loads(s[start: s.rfind("}") + 1])
+        return (data.get("ideas") if isinstance(data, dict) else None) or []
+    except ValueError:
+        pass
+    m = re.search(r'"ideas"\s*:\s*\[', s)
+    if not m:
+        return []
+    dec, pos, out = json.JSONDecoder(), m.end(), []
+    while True:
+        while pos < len(s) and s[pos] in " \r\n\t,":
+            pos += 1
+        if pos >= len(s) or s[pos] != "{":
+            return out
+        try:
+            obj, pos = dec.raw_decode(s, pos)
+        except ValueError:
+            return out
+        out.append(obj)
+
+
+def parse_ideas(text: str, plan: dict, topic_ids: set[str]) -> list[dict]:
+    """AIの返事から案を読む。形式が決まりの外・点が足りない・題が空の案は捨てる。JSONでなければ空（途中で切れていたら、閉じた案だけ）。"""
     formats = set(plan.get("formats", []))
     out = []
-    for it in (data.get("ideas") if isinstance(data, dict) else None) or []:
+    for it in _raw_ideas(text):
         if not isinstance(it, dict):
             continue
         title = str(it.get("title") or "").strip()[:40]
