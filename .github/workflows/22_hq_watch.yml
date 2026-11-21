@@ -1,0 +1,46 @@
+name: WF-22 見張り（止まった仕事を Discord のシステム部へ知らせる）
+
+# GitHub Actions の失敗（失敗・時間切れ・起動できず）と、GitHub に止められた定時実行を、Discord の「システム」チャンネルへ知らせる。
+# ワークフローの一覧は持たない（GitHub に聞く）ので、あとから増えたものもそのまま見張る。同じワークフローは6時間に1回まで。
+# 費用は0円（AIを使わない）。このリポジトリは公開。ログに出すのは件数だけ。
+# 鍵は新しく増やさない: FIREBASE_SERVICE_ACCOUNT_JSON / BOT_WEBHOOK_URL（既存）と、GitHub が渡す GITHUB_TOKEN（読むだけ）。
+
+on:
+  schedule:
+    - cron: '45 * * * *'  # 毎時 45分
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true なら数えるだけで、送らない'
+        default: 'false'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: hq-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests firebase-admin
+      - name: 止まった仕事を探して知らせる
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          BOT_WEBHOOK_URL: ${{ secrets.BOT_WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python scripts/hq_watch.py --dry-run
+          else
+            python scripts/hq_watch.py
+          fi
