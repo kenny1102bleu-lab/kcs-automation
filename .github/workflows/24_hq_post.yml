@@ -1,0 +1,54 @@
+name: WF-24 X への投稿（承認したものを投稿予定日に出す）
+
+# 秘書室で謙一が承認した下書き（approvals の kind=x_post）を、投稿予定日に X へ出す（scripts/hq_post.py）。
+# スイッチ: リポジトリの変数 KCS_X_POST_ACCOUNTS（カンマ区切りのアカウントID）。空なら、どこにも投稿しない。
+#   入れるのは、そのアカウントの X の鍵（<接頭辞>_TWITTER_*）を Secrets に入れ、X API の費用を謙一が確かめてから。
+# 決まり: 1アカウント1日4件まで・2時間あける・1回の実行で1アカウント1件・夜（23時〜7時）は出さない・予定日を過ぎたら出さない。
+# 失敗したら、WF-22（見張り）と、担当の Discord チャンネルへ。このリポジトリは公開。ログに出すのは件数だけ。
+
+on:
+  schedule:
+    - cron: '20 * * * *'  # 毎時20分（GitHub の都合で数時間おくれることがある）
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '数えるだけで出さない'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hq-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      BOT_WEBHOOK_URL: ${{ secrets.BOT_WEBHOOK_URL }}
+      KCS_X_POST_ACCOUNTS: ${{ vars.KCS_X_POST_ACCOUNTS }}
+      URANAI_TWITTER_API_KEY: ${{ secrets.URANAI_TWITTER_API_KEY }}
+      URANAI_TWITTER_API_SECRET: ${{ secrets.URANAI_TWITTER_API_SECRET }}
+      URANAI_TWITTER_ACCESS_TOKEN: ${{ secrets.URANAI_TWITTER_ACCESS_TOKEN }}
+      URANAI_TWITTER_ACCESS_SECRET: ${{ secrets.URANAI_TWITTER_ACCESS_SECRET }}
+      EMMA_TWITTER_API_KEY: ${{ secrets.EMMA_TWITTER_API_KEY }}
+      EMMA_TWITTER_API_SECRET: ${{ secrets.EMMA_TWITTER_API_SECRET }}
+      EMMA_TWITTER_ACCESS_TOKEN: ${{ secrets.EMMA_TWITTER_ACCESS_TOKEN }}
+      EMMA_TWITTER_ACCESS_SECRET: ${{ secrets.EMMA_TWITTER_ACCESS_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests requests-oauthlib firebase-admin
+      - name: 承認したものを出す
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python scripts/hq_post.py --dry-run
+          else
+            python scripts/hq_post.py
+          fi
