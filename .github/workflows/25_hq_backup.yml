@@ -1,0 +1,98 @@
+name: WF-25 バックアップ（中枢のデータを毎日、非公開の kcs-hq へ残す）
+
+# Firestore の全部のコレクションを JSON にして、非公開の kcs-hq の backups ブランチへコミットする。
+# 毎日のコミットがそのまま「その日の中身」になる。戻すのは WF-26。費用は0円（AIを使わない）。
+# このリポジトリは公開。ログに出すのは件数だけ。書き出したファイルはアーティファクトにしない。
+# 鍵: FIREBASE_SERVICE_ACCOUNT_JSON（既存）と KCS_HQ_BACKUP_TOKEN（kcs-hq だけに書ける GitHub の鍵。謙一が貼る）。
+# KCS_HQ_BACKUP_TOKEN が無いあいだは、警告を出してとばす。
+# 前回より半分以上減っていたら、残したうえで失敗にする（WF-22 の見張りが Discord へ知らせる）。
+
+on:
+  schedule:
+    - cron: '40 18 * * *'  # 毎日 03:40（日本時間）
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true なら数えるだけで、kcs-hq へ残さない（KCS_HQ_BACKUP_TOKEN が無くても動く）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hq-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 鍵があるか確かめる（値は表示しない）
+        id: keys
+        env:
+          HQ_TOKEN: ${{ secrets.KCS_HQ_BACKUP_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "mode=count" >> "$GITHUB_OUTPUT"
+          elif [ -z "$HQ_TOKEN" ]; then
+            echo "::warning::KCS_HQ_BACKUP_TOKEN が未登録なので、バックアップをとばしました"
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=save" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.keys.outputs.mode != 'skip'
+
+      - name: kcs-hq の backups ブランチを取ってくる
+        if: steps.keys.outputs.mode == 'save'
+        uses: actions/checkout@v4
+        with:
+          repository: kenny1102bleu-lab/kcs-hq
+          ref: backups
+          token: ${{ secrets.KCS_HQ_BACKUP_TOKEN }}
+          path: hq-backup
+
+      - uses: actions/setup-python@v5
+        if: steps.keys.outputs.mode != 'skip'
+        with:
+          python-version: '3.11'
+      - run: pip install -q firebase-admin
+        if: steps.keys.outputs.mode != 'skip'
+
+      - name: 書き出す
+        id: dump
+        if: steps.keys.outputs.mode != 'skip'
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          MODE: ${{ steps.keys.outputs.mode }}
+        run: |
+          if [ "$MODE" = "count" ]; then
+            python scripts/hq_backup.py --out "$RUNNER_TEMP/backup" --dry-run
+          else
+            python scripts/hq_backup.py --out hq-backup
+          fi
+
+      - name: kcs-hq へ残す
+        if: steps.keys.outputs.mode == 'save'
+        working-directory: hq-backup
+        run: |
+          git config user.name "kcs-backup"
+          git config user.email "noreply@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "前回から変わりなし（コミットしません）"
+          else
+            git commit -q -m "バックアップ $(TZ=Asia/Tokyo date +%F)"
+            git push -q origin HEAD:backups
+            echo "kcs-hq の backups ブランチへ残しました"
+          fi
+
+      - name: 大きく減っていたら知らせる
+        if: steps.dump.outputs.dropped == 'true'
+        run: |
+          echo "::error::前回より半分以上減っています。消えすぎていないか確かめてください（前の日の分は kcs-hq の backups ブランチの履歴にあります）"
+          exit 1

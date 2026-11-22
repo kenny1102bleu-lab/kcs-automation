@@ -1,0 +1,72 @@
+name: WF-26 バックアップから戻す（既定は比べるだけ）
+
+# 謙一が手で動かすだけ（定時実行なし）。kcs-hq の backups ブランチから選んだ日の中身を取ってきて、いまの Firestore と比べる。
+# apply を入れて、確認の欄に「戻す」と書いたときだけ、無くなったもの・変わったものを上書きする。あとから増えたものは消さない。
+# このリポジトリは公開。ログに出すのは件数だけ。
+# 鍵: FIREBASE_SERVICE_ACCOUNT_JSON（既存）と KCS_HQ_BACKUP_TOKEN（WF-25 と同じ）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'どの日のバックアップか（kcs-hq の backups ブランチのコミット。空なら最新）'
+        default: ''
+      collections:
+        description: '戻すコレクション（カンマ区切り。例: approvals,ideas）'
+        required: true
+      apply:
+        description: '本当に書き戻す（入れないと比べるだけ）'
+        type: boolean
+        default: false
+      confirm:
+        description: '書き戻すときは「戻す」と書く'
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hq-backup
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 書き戻す前の確認
+        env:
+          APPLY: ${{ github.event.inputs.apply }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          if [ "$APPLY" = "true" ] && [ "$CONFIRM" != "戻す" ]; then
+            echo "::error::書き戻すときは、確認の欄に「戻す」と書いてください"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: kcs-hq のバックアップを取ってくる
+        uses: actions/checkout@v4
+        with:
+          repository: kenny1102bleu-lab/kcs-hq
+          ref: ${{ github.event.inputs.ref || 'backups' }}
+          token: ${{ secrets.KCS_HQ_BACKUP_TOKEN }}
+          path: hq-backup
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -q firebase-admin
+
+      - name: 比べる（apply なら書き戻す）
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          COLLECTIONS: ${{ github.event.inputs.collections }}
+          APPLY: ${{ github.event.inputs.apply }}
+        run: |
+          if [ "$APPLY" = "true" ]; then
+            python scripts/hq_restore.py --snapshot hq-backup/snapshot --collections "$COLLECTIONS" --apply
+          else
+            python scripts/hq_restore.py --snapshot hq-backup/snapshot --collections "$COLLECTIONS"
+          fi
