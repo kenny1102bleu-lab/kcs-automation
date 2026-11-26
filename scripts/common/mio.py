@@ -10,7 +10,6 @@
 
 返り値: {"approved": bool, "score": int(0-100), "reason": str}
 """
-import os
 import json
 import base64
 import pathlib

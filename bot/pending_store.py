@@ -7,10 +7,11 @@ Bot再起動時に消えないようにGitHub Gist（secret gist）に保存。
   PENDING_GIST_ID - 既存のGist ID（なければ初回起動時に作成）
 """
 import json
-import os
 import time
 import threading
 import requests
+
+from scripts.common.env_clean import clean_env
 
 
 GIST_FILENAME = "kcs_pending_approvals.json"
@@ -19,8 +20,10 @@ GIST_API = "https://api.github.com/gists"
 
 class PendingStore:
     def __init__(self):
-        self.token = os.environ.get("GH_PAT", "")
-        self.gist_id = os.environ.get("PENDING_GIST_ID", "")
+        # CLAUDE.md §1: Secrets の値にBOM・ゼロ幅文字が混ざると、Gistへの保存が
+        # 認証エラーで静かに失敗する。必ず clean_env を通す。
+        self.token = clean_env("GH_PAT")
+        self.gist_id = clean_env("PENDING_GIST_ID")
         self._lock = threading.Lock()
         self._cache: dict = {}
         if self.token:
